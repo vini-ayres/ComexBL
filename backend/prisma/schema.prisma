@@ -1,0 +1,437 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlserver"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Entidades OCR / n8n (somente leitura na aplicação)
+// ---------------------------------------------------------------------------
+
+model BlMaster {
+  Id                       Int       @id(map: "PK_BL_Master") @default(autoincrement())
+  ReferenceNumber          String?   @db.VarChar(50)
+  MasterNumber             String    @unique(map: "UQ_BL_Master_MasterNumber") @db.VarChar(50)
+  BLTypeExportImport       String?   @db.Char(1)
+  VesselName               String?   @db.NVarChar(200)
+  Voyage                   String?   @db.VarChar(50)
+  OnboardDate              DateTime? @db.Date
+  ArrivalDate              DateTime? @db.Date
+  HBLCount                 Int?
+  ShipperName              String?   @db.NVarChar(300)
+  ShipperAddress           String?
+  ConsigneeName            String?   @db.NVarChar(300)
+  ConsigneeAddress         String?
+  NotifyName               String?   @db.NVarChar(300)
+  NotifyAddress            String?
+  CarrierSCACCode          String?   @db.VarChar(20)
+  CarrierName              String?   @db.NVarChar(300)
+  CargoTypeLclFclBulk      String?   @db.Char(1)
+  ServiceTerm              String?   @db.VarChar(30)
+  FreightTerm              String?   @db.VarChar(10)
+  LoadingPortCode          String?   @db.VarChar(10)
+  LoadingPortName          String?   @db.NVarChar(200)
+  DischargePortCode        String?   @db.VarChar(10)
+  DischargePortName        String?   @db.NVarChar(200)
+  DeliveryPortCode         String?   @db.VarChar(10)
+  DeliveryPortName         String?   @db.NVarChar(200)
+  FinalDestinationPortCode String?   @db.VarChar(10)
+  FinalDestinationPortName String?   @db.NVarChar(200)
+  ContainerNumber          String?   @db.VarChar(20)
+  ContainerType            String?   @db.VarChar(20)
+  PackingQuantity          Int?
+  PackingQuantityUnitCode  String?   @db.VarChar(10)
+  GrossWeight              Decimal?  @db.Decimal(18, 3)
+  VolumeMeasure            Decimal?  @db.Decimal(18, 3)
+  Status                   Boolean   @default(false, map: "DF_BL_Master_Status")
+  ItemId                   String?   @db.NVarChar(255)
+  DriveId                  String?   @db.NVarChar(255)
+
+  houses              BlHouse[]
+  camposRevisao       BlCampoRevisao[]
+  historico           BlHistoricoAlteracao[]
+  workflow            BlWorkflow?
+  divergencias        BlDivergencia[]
+  processoEtapas      BlProcessoEtapa[]
+  consultasGlobalSys  BlConsultaGlobalSys[]
+
+  @@index([ContainerNumber], map: "IX_BL_Master_ContainerNumber")
+  @@index([DeliveryPortCode], map: "IX_BL_Master_DeliveryPortCode")
+  @@index([LoadingPortCode], map: "IX_BL_Master_LoadingPortCode")
+  @@index([OnboardDate], map: "IX_BL_Master_OnboardDate")
+  @@index([VesselName], map: "IX_BL_Master_VesselName")
+  @@index([Status], map: "IX_BL_Master_Status")
+  @@map("BL_Master")
+}
+
+model BlHouse {
+  Id                      Int       @id(map: "PK_BL_House") @default(autoincrement())
+  BLMasterId              Int?
+  HouseNumber             String    @unique(map: "UQ_BL_House_HouseNumber") @db.VarChar(50)
+  ShipperName             String?   @db.NVarChar(300)
+  ShipperAddress          String?
+  ConsigneeName           String?   @db.NVarChar(300)
+  ConsigneeAddress        String?
+  NotifyName              String?   @db.NVarChar(300)
+  NotifyAddress           String?
+  BLCargoTypeExIm         String?   @db.Char(1)
+  OriginalBLMethodCode    String?   @db.VarChar(10)
+  ServiceTerm             String?   @db.VarChar(30)
+  FreightTerm             String?   @db.VarChar(10)
+  ReceiptPortCode         String?   @db.VarChar(10)
+  ReceiptPortName         String?   @db.VarChar(200)
+  LoadingPortCode         String?   @db.VarChar(10)
+  LoadingPortName         String?   @db.NVarChar(200)
+  DischargePortCode       String?   @db.VarChar(10)
+  DischargePortName       String?   @db.NVarChar(200)
+  DeliveryPortCode        String?   @db.VarChar(10)
+  DeliveryPortName        String?   @db.NVarChar(200)
+  PackingQuantity         Int?
+  PackingQuantityUnitCode String?   @db.VarChar(10)
+  GrossWeight             Decimal?  @db.Decimal(18, 3)
+  VolumeMeasure           Decimal?  @db.Decimal(18, 3)
+  IssueDate               DateTime?
+  ItemName                String?   @db.NVarChar(Max)
+  ContainerNumber         String?   @db.VarChar(20)
+  ContainerSealNo1        String?   @db.VarChar(30)
+  ContainerSealNo2        String?   @db.VarChar(30)
+  ContainerType           String?   @db.VarChar(20)
+  ContainerQTY            Int?
+  ContainerUnitCode       String?   @db.VarChar(50)
+  ContainerGWT            Decimal?  @db.Decimal(18, 3)
+  ContainerCBM            Decimal?  @db.Decimal(18, 3)
+  Status                  Boolean   @default(false, map: "DF_BL_House_Status")
+  ItemId                  String?   @db.NVarChar(255)
+  DriveId                 String?   @db.NVarChar(255)
+
+  master             BlMaster?              @relation(fields: [BLMasterId], references: [Id], onDelete: NoAction, onUpdate: NoAction, map: "FK_BL_House_BL_Master")
+  camposRevisao      BlCampoRevisao[]
+  historico          BlHistoricoAlteracao[]
+  workflow           BlWorkflow?
+  divergencias       BlDivergencia[]
+  processoEtapas     BlProcessoEtapa[]
+  consultasGlobalSys BlConsultaGlobalSys[]
+
+  @@index([BLMasterId], map: "IX_BL_House_BLMasterId")
+  @@index([ContainerNumber], map: "IX_BL_House_ContainerNumber")
+  @@index([Status], map: "IX_BL_House_Status")
+  @@map("BL_House")
+}
+
+// ---------------------------------------------------------------------------
+// Domínio operacional BL (aplicação ComexBL)
+// ---------------------------------------------------------------------------
+
+/// Status operacional: apoio_humano | divergencia | processando | finalizado | nao_encontrado
+model BlWorkflow {
+  Id                 Int      @id(map: "PK_BL_Workflow") @default(autoincrement())
+  BlMasterId         Int?     @unique(map: "UQ_BL_Workflow_BlMasterId")
+  BlHouseId          Int?     @unique(map: "UQ_BL_Workflow_BlHouseId")
+  TipoBl             String   @db.VarChar(10)
+  Status             String   @db.VarChar(30)
+  Pendencia          String?  @db.NVarChar(500)
+  ResponsavelUserId  Int?
+  Confianca          Int?
+  CreatedAt          DateTime @default(now()) @map("CreatedAt")
+  UpdatedAt          DateTime @updatedAt @map("UpdatedAt")
+
+  master      BlMaster? @relation(fields: [BlMasterId], references: [Id], onDelete: Cascade, onUpdate: NoAction, map: "FK_BL_Workflow_BL_Master")
+  house       BlHouse?  @relation(fields: [BlHouseId], references: [Id], onDelete: Cascade, onUpdate: NoAction, map: "FK_BL_Workflow_BL_House")
+  responsavel AppUser?  @relation(fields: [ResponsavelUserId], references: [Id], onDelete: NoAction, onUpdate: NoAction, map: "FK_BL_Workflow_APP_User")
+
+  @@index([Status], map: "IX_BL_Workflow_Status")
+  @@index([ResponsavelUserId], map: "IX_BL_Workflow_ResponsavelUserId")
+  @@index([UpdatedAt], map: "IX_BL_Workflow_UpdatedAt")
+  @@map("BL_Workflow")
+}
+
+/// Revisão de campos no Apoio Humano
+model BlCampoRevisao {
+  Id              Int      @id(map: "PK_BL_CampoRevisao") @default(autoincrement())
+  BlMasterId      Int?
+  BlHouseId       Int?
+  CampoKey        String   @db.VarChar(50)
+  CampoLabel      String   @db.NVarChar(200)
+  ValorRecebido   String   @db.NVarChar(500)
+  ValorManual     String?  @db.NVarChar(500)
+  Confianca       Int      @default(0)
+  Status          String   @default("pendente") @db.VarChar(20)
+  UpdatedByUserId Int?
+  UpdatedAt       DateTime @updatedAt @map("UpdatedAt")
+  CreatedAt       DateTime @default(now()) @map("CreatedAt")
+
+  master    BlMaster? @relation(fields: [BlMasterId], references: [Id], onDelete: Cascade, onUpdate: NoAction, map: "FK_BL_CampoRevisao_BL_Master")
+  house     BlHouse?  @relation(fields: [BlHouseId], references: [Id], onDelete: Cascade, onUpdate: NoAction, map: "FK_BL_CampoRevisao_BL_House")
+  updatedBy AppUser?  @relation(fields: [UpdatedByUserId], references: [Id], onDelete: NoAction, onUpdate: NoAction, map: "FK_BL_CampoRevisao_APP_User")
+
+  @@index([BlMasterId], map: "IX_BL_CampoRevisao_BlMasterId")
+  @@index([BlHouseId], map: "IX_BL_CampoRevisao_BlHouseId")
+  @@index([Status], map: "IX_BL_CampoRevisao_Status")
+  @@map("BL_CampoRevisao")
+}
+
+/// Trilha de alterações por BL (Apoio Humano, Divergência)
+model BlHistoricoAlteracao {
+  Id           Int      @id(map: "PK_BL_HistoricoAlteracao") @default(autoincrement())
+  BlMasterId   Int?
+  BlHouseId    Int?
+  UserId       Int?
+  Usuario      String   @db.NVarChar(200)
+  Campo        String   @db.NVarChar(200)
+  ValorAntes   String   @db.NVarChar(500)
+  ValorDepois  String   @db.NVarChar(500)
+  Acao         String   @default("edicao") @db.VarChar(30)
+  CreatedAt    DateTime @default(now()) @map("CreatedAt")
+
+  master BlMaster? @relation(fields: [BlMasterId], references: [Id], onDelete: Cascade, onUpdate: NoAction, map: "FK_BL_HistoricoAlteracao_BL_Master")
+  house  BlHouse?  @relation(fields: [BlHouseId], references: [Id], onDelete: Cascade, onUpdate: NoAction, map: "FK_BL_HistoricoAlteracao_BL_House")
+  user   AppUser?  @relation(fields: [UserId], references: [Id], onDelete: NoAction, onUpdate: NoAction, map: "FK_BL_HistoricoAlteracao_APP_User")
+
+  @@index([BlMasterId], map: "IX_BL_HistoricoAlteracao_BlMasterId")
+  @@index([BlHouseId], map: "IX_BL_HistoricoAlteracao_BlHouseId")
+  @@index([CreatedAt], map: "IX_BL_HistoricoAlteracao_CreatedAt")
+  @@index([UserId], map: "IX_BL_HistoricoAlteracao_UserId")
+  @@map("BL_HistoricoAlteracao")
+}
+
+/// Comparação BL Final x GlobalSys por documento
+model BlDivergencia {
+  Id               Int       @id(map: "PK_BL_Divergencia") @default(autoincrement())
+  BlMasterId       Int?
+  BlHouseId        Int?
+  Status           String    @default("pendente") @db.VarChar(20)
+  ResolvedByUserId Int?
+  ResolvedAt       DateTime?
+  CreatedAt        DateTime  @default(now()) @map("CreatedAt")
+  UpdatedAt        DateTime  @updatedAt @map("UpdatedAt")
+
+  master     BlMaster?            @relation(fields: [BlMasterId], references: [Id], onDelete: Cascade, onUpdate: NoAction, map: "FK_BL_Divergencia_BL_Master")
+  house      BlHouse?             @relation(fields: [BlHouseId], references: [Id], onDelete: Cascade, onUpdate: NoAction, map: "FK_BL_Divergencia_BL_House")
+  resolvedBy AppUser?               @relation(fields: [ResolvedByUserId], references: [Id], onDelete: NoAction, onUpdate: NoAction, map: "FK_BL_Divergencia_APP_User")
+  campos     BlDivergenciaCampo[]
+
+  @@index([BlMasterId], map: "IX_BL_Divergencia_BlMasterId")
+  @@index([BlHouseId], map: "IX_BL_Divergencia_BlHouseId")
+  @@index([Status], map: "IX_BL_Divergencia_Status")
+  @@map("BL_Divergencia")
+}
+
+/// Campo comparado na divergência (master ou house)
+model BlDivergenciaCampo {
+  Id              Int    @id(map: "PK_BL_DivergenciaCampo") @default(autoincrement())
+  BlDivergenciaId Int
+  CampoKey        String @db.VarChar(50)
+  CampoLabel      String @db.NVarChar(200)
+  ValorBlFinal    String @db.NVarChar(500)
+  ValorGlobalSys  String @db.NVarChar(500)
+  Status          String @db.VarChar(20)
+  Categoria       String @db.VarChar(10)
+
+  divergencia BlDivergencia @relation(fields: [BlDivergenciaId], references: [Id], onDelete: Cascade, onUpdate: NoAction, map: "FK_BL_DivergenciaCampo_BL_Divergencia")
+
+  @@unique([BlDivergenciaId, CampoKey], map: "UQ_BL_DivergenciaCampo_Divergencia_CampoKey")
+  @@index([Status], map: "IX_BL_DivergenciaCampo_Status")
+  @@map("BL_DivergenciaCampo")
+}
+
+/// Timeline do processo (Dashboard / Processo Finalizado)
+model BlProcessoEtapa {
+  Id          Int       @id(map: "PK_BL_ProcessoEtapa") @default(autoincrement())
+  BlMasterId  Int?
+  BlHouseId   Int?
+  Ordem       Int
+  Titulo      String    @db.NVarChar(200)
+  Status      String    @db.VarChar(20)
+  Descricao   String?   @db.NVarChar(500)
+  CompletedAt DateTime?
+  CreatedAt   DateTime  @default(now()) @map("CreatedAt")
+
+  master BlMaster? @relation(fields: [BlMasterId], references: [Id], onDelete: Cascade, onUpdate: NoAction, map: "FK_BL_ProcessoEtapa_BL_Master")
+  house  BlHouse?  @relation(fields: [BlHouseId], references: [Id], onDelete: Cascade, onUpdate: NoAction, map: "FK_BL_ProcessoEtapa_BL_House")
+
+  @@index([BlMasterId, Ordem], map: "IX_BL_ProcessoEtapa_BlMasterId_Ordem")
+  @@index([BlHouseId, Ordem], map: "IX_BL_ProcessoEtapa_BlHouseId_Ordem")
+  @@map("BL_ProcessoEtapa")
+}
+
+/// Tentativas de consulta ao GlobalSys (BL Não Encontrado)
+model BlConsultaGlobalSys {
+  Id              Int      @id(map: "PK_BL_ConsultaGlobalSys") @default(autoincrement())
+  BlMasterId      Int?
+  BlHouseId       Int?
+  TentativaNumero Int
+  Sucesso         Boolean  @default(false)
+  Detalhe         String?  @db.NVarChar(500)
+  ExecutadoEm     DateTime @default(now()) @map("ExecutadoEm")
+
+  master BlMaster? @relation(fields: [BlMasterId], references: [Id], onDelete: Cascade, onUpdate: NoAction, map: "FK_BL_ConsultaGlobalSys_BL_Master")
+  house  BlHouse?  @relation(fields: [BlHouseId], references: [Id], onDelete: Cascade, onUpdate: NoAction, map: "FK_BL_ConsultaGlobalSys_BL_House")
+
+  @@index([BlMasterId, ExecutadoEm], map: "IX_BL_ConsultaGlobalSys_BlMasterId_ExecutadoEm")
+  @@index([BlHouseId, ExecutadoEm], map: "IX_BL_ConsultaGlobalSys_BlHouseId_ExecutadoEm")
+  @@index([Sucesso], map: "IX_BL_ConsultaGlobalSys_Sucesso")
+  @@map("BL_ConsultaGlobalSys")
+}
+
+// ---------------------------------------------------------------------------
+// Identidade, RBAC e LDAP (aplicação ComexBL)
+// ---------------------------------------------------------------------------
+
+model AppUser {
+  Id          Int       @id(map: "PK_APP_User") @default(autoincrement())
+  Login       String    @unique(map: "UQ_APP_User_Login") @db.VarChar(100)
+  Email       String    @unique(map: "UQ_APP_User_Email") @db.VarChar(200)
+  DisplayName String    @db.NVarChar(200)
+  Status      String    @default("ativo") @db.VarChar(20)
+  AdObjectId  String?   @db.VarChar(100)
+  AvatarColor String?   @db.VarChar(20)
+  LastLoginAt DateTime?
+  SyncedAt    DateTime?
+  CreatedAt   DateTime  @default(now()) @map("CreatedAt")
+  UpdatedAt   DateTime  @updatedAt @map("UpdatedAt")
+
+  roles                AppUserRole[]
+  adGroups             AppUserAdGroup[]
+  workflowsResponsavel BlWorkflow[]
+  camposRevisao        BlCampoRevisao[]
+  historicoAlteracoes  BlHistoricoAlteracao[]
+  divergenciasResolvidas BlDivergencia[]
+  auditLogs            AppAuditLog[]
+  integrationUpdates   AppIntegrationConfig[]
+
+  @@index([Status], map: "IX_APP_User_Status")
+  @@index([SyncedAt], map: "IX_APP_User_SyncedAt")
+  @@map("APP_User")
+}
+
+/// Perfil de acesso: Administrador | Supervisor | Operador | Auditor
+model AppRole {
+  Id          Int      @id(map: "PK_APP_Role") @default(autoincrement())
+  Name        String   @unique(map: "UQ_APP_Role_Name") @db.VarChar(50)
+  Description String?  @db.NVarChar(300)
+  IsSystem    Boolean  @default(true)
+  CreatedAt   DateTime @default(now()) @map("CreatedAt")
+  UpdatedAt   DateTime @updatedAt @map("UpdatedAt")
+
+  permissions AppRolePermission[]
+  users       AppUserRole[]
+  adGroups    AppAdGroup[]
+
+  @@map("APP_Role")
+}
+
+model AppPermission {
+  Id          Int      @id(map: "PK_APP_Permission") @default(autoincrement())
+  Key         String   @unique(map: "UQ_APP_Permission_Key") @db.VarChar(50)
+  Label       String   @db.NVarChar(100)
+  Description String?  @db.NVarChar(300)
+  Module      String?  @db.VarChar(50)
+  CreatedAt   DateTime @default(now()) @map("CreatedAt")
+
+  roles AppRolePermission[]
+
+  @@index([Module], map: "IX_APP_Permission_Module")
+  @@map("APP_Permission")
+}
+
+model AppRolePermission {
+  RoleId       Int
+  PermissionId Int
+  CreatedAt    DateTime @default(now()) @map("CreatedAt")
+
+  role       AppRole       @relation(fields: [RoleId], references: [Id], onDelete: Cascade, onUpdate: NoAction, map: "FK_APP_RolePermission_APP_Role")
+  permission AppPermission @relation(fields: [PermissionId], references: [Id], onDelete: Cascade, onUpdate: NoAction, map: "FK_APP_RolePermission_APP_Permission")
+
+  @@id([RoleId, PermissionId], map: "PK_APP_RolePermission")
+  @@map("APP_RolePermission")
+}
+
+model AppUserRole {
+  UserId    Int
+  RoleId    Int
+  IsPrimary Boolean  @default(true)
+  CreatedAt DateTime @default(now()) @map("CreatedAt")
+
+  user AppUser @relation(fields: [UserId], references: [Id], onDelete: Cascade, onUpdate: NoAction, map: "FK_APP_UserRole_APP_User")
+  role AppRole @relation(fields: [RoleId], references: [Id], onDelete: NoAction, onUpdate: NoAction, map: "FK_APP_UserRole_APP_Role")
+
+  @@id([UserId, RoleId], map: "PK_APP_UserRole")
+  @@index([RoleId], map: "IX_APP_UserRole_RoleId")
+  @@map("APP_UserRole")
+}
+
+/// Grupo do Active Directory mapeado a um perfil (Role)
+model AppAdGroup {
+  Id                  Int      @id(map: "PK_APP_AdGroup") @default(autoincrement())
+  Name                String   @unique(map: "UQ_APP_AdGroup_Name") @db.VarChar(100)
+  DistinguishedName   String   @unique(map: "UQ_APP_AdGroup_DistinguishedName") @db.NVarChar(500)
+  DefaultRoleId       Int
+  SyncedAt            DateTime?
+  CreatedAt           DateTime @default(now()) @map("CreatedAt")
+  UpdatedAt           DateTime @updatedAt @map("UpdatedAt")
+
+  defaultRole AppRole          @relation(fields: [DefaultRoleId], references: [Id], onDelete: NoAction, onUpdate: NoAction, map: "FK_APP_AdGroup_APP_Role")
+  users       AppUserAdGroup[]
+
+  @@index([DefaultRoleId], map: "IX_APP_AdGroup_DefaultRoleId")
+  @@map("APP_AdGroup")
+}
+
+model AppUserAdGroup {
+  UserId    Int
+  AdGroupId Int
+  CreatedAt DateTime @default(now()) @map("CreatedAt")
+
+  user    AppUser    @relation(fields: [UserId], references: [Id], onDelete: Cascade, onUpdate: NoAction, map: "FK_APP_UserAdGroup_APP_User")
+  adGroup AppAdGroup @relation(fields: [AdGroupId], references: [Id], onDelete: Cascade, onUpdate: NoAction, map: "FK_APP_UserAdGroup_APP_AdGroup")
+
+  @@id([UserId, AdGroupId], map: "PK_APP_UserAdGroup")
+  @@index([AdGroupId], map: "IX_APP_UserAdGroup_AdGroupId")
+  @@map("APP_UserAdGroup")
+}
+
+// ---------------------------------------------------------------------------
+// Auditoria e configurações de integração
+// ---------------------------------------------------------------------------
+
+/// Trilha de auditoria global do sistema (admin, login, configurações)
+model AppAuditLog {
+  Id           Int      @id(map: "PK_APP_AuditLog") @default(autoincrement())
+  UserId       Int?
+  UserLogin    String   @db.NVarChar(200)
+  Action       String   @db.NVarChar(200)
+  EntityType   String   @db.NVarChar(100)
+  RecordRef    String?  @db.NVarChar(200)
+  ValuesBefore String?  @db.NVarChar(Max)
+  ValuesAfter  String?  @db.NVarChar(Max)
+  IpAddress    String?  @db.VarChar(45)
+  CreatedAt    DateTime @default(now()) @map("CreatedAt")
+
+  user AppUser? @relation(fields: [UserId], references: [Id], onDelete: NoAction, onUpdate: NoAction, map: "FK_APP_AuditLog_APP_User")
+
+  @@index([CreatedAt], map: "IX_APP_AuditLog_CreatedAt")
+  @@index([UserId], map: "IX_APP_AuditLog_UserId")
+  @@index([EntityType], map: "IX_APP_AuditLog_EntityType")
+  @@index([Action], map: "IX_APP_AuditLog_Action")
+  @@map("APP_AuditLog")
+}
+
+/// Configurações de integração: ldap | onedrive | globalsys_db
+model AppIntegrationConfig {
+  Id              Int       @id(map: "PK_APP_IntegrationConfig") @default(autoincrement())
+  Type            String    @unique(map: "UQ_APP_IntegrationConfig_Type") @db.VarChar(30)
+  ConfigJson      String    @db.NVarChar(Max)
+  Status          String    @default("desconectado") @db.VarChar(20)
+  LastSyncAt      DateTime?
+  UpdatedByUserId Int?
+  CreatedAt       DateTime  @default(now()) @map("CreatedAt")
+  UpdatedAt       DateTime  @updatedAt @map("UpdatedAt")
+
+  updatedBy AppUser? @relation(fields: [UpdatedByUserId], references: [Id], onDelete: NoAction, onUpdate: NoAction, map: "FK_APP_IntegrationConfig_APP_User")
+
+  @@index([Status], map: "IX_APP_IntegrationConfig_Status")
+  @@map("APP_IntegrationConfig")
+}

@@ -3,13 +3,17 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "dev:sandbox": "wrangler pages dev dist --ip 0.0.0.0 --port 3000",
+    "dev:sandbox": "npm run build:sandbox && wrangler pages dev dist --ip 0.0.0.0 --port 3000",
     "build": "vite build",
+    "build:sandbox": "vite build --mode sandbox",
     "preview": "wrangler pages dev dist",
     "deploy": "npm run build && wrangler pages deploy dist",
     "deploy:prod": "npm run build && wrangler pages deploy dist --project-name webapp",
     "cf-typegen": "wrangler types --env-interface CloudflareBindings",
-    "clean-port": "fuser -k 3000/tcp 2>/dev/null || true"
+    "clean-port": "fuser -k 3000/tcp 2>/dev/null || true",
+    "dev:api": "npm run dev --prefix backend",
+    "build:api": "npm run build --prefix backend",
+    "start:api": "npm run start --prefix backend"
   },
   "dependencies": {
     "@radix-ui/react-accordion": "^1.2.0",

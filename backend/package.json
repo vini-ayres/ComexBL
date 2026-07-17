@@ -1,0 +1,37 @@
+{
+  "name": "comexbl-api",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "prisma:generate": "tsx scripts/run-prisma.ts generate",
+    "prisma:migrate": "tsx scripts/run-prisma.ts migrate dev",
+    "prisma:deploy": "tsx scripts/run-prisma.ts migrate deploy",
+    "prisma:studio": "tsx scripts/run-prisma.ts studio",
+    "prisma:seed": "tsx scripts/run-prisma.ts db seed",
+    "prisma:pull": "tsx scripts/run-prisma.ts db pull",
+    "test:db": "tsx scripts/test-connection.ts",
+    "test:globalsys": "tsx scripts/test-globalsys-connection.ts",
+    "postinstall": "prisma generate"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.9.0",
+    "dotenv": "^16.5.0",
+    "express": "^5.1.0",
+    "mssql": "^12.7.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.3",
+    "@types/mssql": "^12.3.0",
+    "@types/node": "^22.15.30",
+    "prisma": "^6.9.0",
+    "tsx": "^4.19.4",
+    "typescript": "^5.9.3"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  }
+}

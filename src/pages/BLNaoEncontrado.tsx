@@ -1,7 +1,7 @@
-import { useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import {
   AlertOctagon, RefreshCcw, Link2, ExternalLink, XCircle, Calendar,
-  FileText, ChevronRight, Clock,
+  FileText, ChevronRight, Clock, Loader2,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -10,30 +10,110 @@ import { DocumentViewer } from "@/components/shared/DocumentViewer"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { blsNaoEncontrados } from "@/data/mockData"
 import { formatDateTime } from "@/lib/utils"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
+import {
+  fetchBlNaoEncontrado,
+  reprocessarConsultaGlobalSys,
+} from "@/lib/api/bl-nao-encontrado"
+import { ApiError } from "@/lib/api/client"
+import type { BlNaoEncontradoListItemDto } from "@/lib/api/types"
 
 export default function BLNaoEncontrado() {
-  const [selectedId, setSelectedId] = useState(blsNaoEncontrados[0].id)
+  const [items, setItems] = useState<BlNaoEncontradoListItemDto[]>([])
+  const [selection, setSelection] = useState<{
+    id: number
+    tipo: "Master" | "House"
+  } | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [reprocessing, setReprocessing] = useState(false)
   const [assocOpen, setAssocOpen] = useState(false)
-  const selected = blsNaoEncontrados.find((b) => b.id === selectedId)!
 
-  function handleConsultarNovamente() {
+  const loadQueue = useCallback(async () => {
+    setLoading(true)
+
+    try {
+      const result = await fetchBlNaoEncontrado()
+      setItems(result.data)
+      setSelection((prev) => {
+        if (result.data.length === 0) {
+          return null
+        }
+
+        if (
+          prev &&
+          result.data.some((item) => item.id === prev.id && item.tipo === prev.tipo)
+        ) {
+          return prev
+        }
+
+        return { id: result.data[0].id, tipo: result.data[0].tipo }
+      })
+    } catch (error) {
+      const message =
+        error instanceof ApiError ? error.message : "Erro ao carregar fila"
+      toast.error(message)
+      setItems([])
+      setSelection(null)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    void loadQueue()
+  }, [loadQueue])
+
+  const selected = items.find(
+    (item) => item.id === selection?.id && item.tipo === selection.tipo,
+  )
+
+  async function handleConsultarNovamente() {
+    if (!selected) return
+
+    setReprocessing(true)
     toast.loading("Consultando GlobalSys...", { id: "consulta" })
-    setTimeout(() => {
-      toast.error("BL ainda não localizado no GlobalSys.", { id: "consulta" })
-    }, 1400)
+
+    try {
+      const result = await reprocessarConsultaGlobalSys(selected.tipo, selected.id)
+
+      if (result.found) {
+        toast.success("BL localizado no GlobalSys.", { id: "consulta" })
+      } else {
+        toast.error("BL ainda não localizado no GlobalSys.", { id: "consulta" })
+      }
+
+      await loadQueue()
+    } catch (error) {
+      const message =
+        error instanceof ApiError ? error.message : "Erro ao consultar GlobalSys"
+      toast.error(message, { id: "consulta" })
+    } finally {
+      setReprocessing(false)
+    }
   }
 
   function handleAssociar() {
     setAssocOpen(false)
-    toast.success("BL associado manualmente ao registro GlobalSys.")
+    toast.info("Associação manual será implementada em etapa futura.")
   }
 
   function handleIgnorar() {
-    toast.info("Registro marcado como ignorado.")
+    toast.info("Ação de ignorar será implementada em etapa futura.")
+  }
+
+  function selectItem(item: BlNaoEncontradoListItemDto) {
+    setSelection({ id: item.id, tipo: item.tipo })
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-24 text-muted-foreground">
+        <Loader2 className="h-6 w-6 animate-spin mr-2" />
+        Carregando fila...
+      </div>
+    )
   }
 
   return (
@@ -41,89 +121,109 @@ export default function BLNaoEncontrado() {
       <div className="flex items-center gap-3 rounded-xl border border-danger-100 bg-danger-50 px-4 py-3">
         <AlertOctagon className="h-5 w-5 text-danger-600 shrink-0" />
         <p className="text-sm text-danger-700">
-          <span className="font-semibold">{blsNaoEncontrados.length} BLs</span> identificados pelo OCR não foram localizados no GlobalSys. Ação manual necessária.
+          {items.length === 0 ? (
+            "Nenhum BL pendente — todos os registros foram localizados no GlobalSys."
+          ) : (
+            <>
+              <span className="font-semibold">{items.length} BLs</span> identificados pelo OCR não foram localizados no GlobalSys. Ação manual necessária.
+            </>
+          )}
         </p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[340px_1fr] gap-6">
-        {/* List */}
-        <Card className="h-fit">
-          <CardHeader>
-            <CardTitle className="text-sm">Fila de Pendências</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2 p-3 pt-0">
-            {blsNaoEncontrados.map((bl) => (
-              <button
-                key={bl.id}
-                onClick={() => setSelectedId(bl.id)}
-                className={cn(
-                  "w-full text-left rounded-lg border px-3 py-3 transition-colors",
-                  selectedId === bl.id
-                    ? "border-primary-300 bg-primary-50"
-                    : "border-transparent hover:bg-secondary/60"
-                )}
-              >
-                <div className="flex items-center justify-between">
-                  <span className="font-semibold text-sm text-primary-900">{bl.numeroBL}</span>
-                  <Badge variant="neutral" className="text-[10px]">{bl.tipo}</Badge>
-                </div>
-                <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
-                  <Clock className="h-3 w-3" /> {formatDateTime(bl.data)}
-                </p>
-                <p className="text-[11px] text-danger-600 mt-1">{bl.tentativasConsulta}x tentativas de consulta</p>
-              </button>
-            ))}
+      {items.length === 0 ? (
+        <Card>
+          <CardContent className="py-12 text-center text-muted-foreground">
+            <FileText className="h-10 w-10 mx-auto mb-3 opacity-40" />
+            <p className="font-medium">Fila vazia</p>
+            <p className="text-sm mt-1">Não há BLs com última consulta &quot;Não Encontrado&quot; no GlobalSys.</p>
           </CardContent>
         </Card>
-
-        {/* Detail */}
-        <div className="space-y-6">
-          <Card>
-            <CardHeader className="flex-row items-start justify-between space-y-0">
-              <div>
-                <div className="flex items-center gap-2">
-                  <CardTitle>{selected.numeroBL}</CardTitle>
-                  <Badge variant="danger">Status Crítico</Badge>
-                </div>
-                <p className="text-sm text-muted-foreground mt-1">
-                  BL identificado pelo OCR, porém não localizado como registro correspondente no GlobalSys.
-                </p>
-              </div>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-[340px_1fr] gap-6">
+          <Card className="h-fit">
+            <CardHeader>
+              <CardTitle className="text-sm">Fila de Pendências</CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
-                <InfoField label="Número BL" value={selected.numeroBL} />
-                <InfoField label="Tipo" value={selected.tipo} />
-                <InfoField label="Data" value={formatDateTime(selected.data)} icon={Calendar} />
-                <InfoField label="Última tentativa" value={formatDateTime(selected.ultimaTentativa)} icon={Clock} />
-              </div>
-
-              <div className="mt-5 flex flex-wrap gap-2">
-                <Button onClick={handleConsultarNovamente}>
-                  <RefreshCcw className="h-4 w-4" /> Consultar novamente
-                </Button>
-                <Button variant="accent" onClick={() => setAssocOpen(true)}>
-                  <Link2 className="h-4 w-4" /> Associar manualmente
-                </Button>
-                <Button variant="outline">
-                  <ExternalLink className="h-4 w-4" /> Abrir cadastro GlobalSys
-                </Button>
-                <Button variant="ghost" className="text-muted-foreground" onClick={handleIgnorar}>
-                  <XCircle className="h-4 w-4" /> Ignorar
-                </Button>
-              </div>
+            <CardContent className="space-y-2 p-3 pt-0">
+              {items.map((bl) => (
+                <button
+                  key={`${bl.tipo}-${bl.id}`}
+                  onClick={() => selectItem(bl)}
+                  className={cn(
+                    "w-full text-left rounded-lg border px-3 py-3 transition-colors",
+                    selection?.id === bl.id && selection?.tipo === bl.tipo
+                      ? "border-primary-300 bg-primary-50"
+                      : "border-transparent hover:bg-secondary/60"
+                  )}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-sm text-primary-900">{bl.numeroBl}</span>
+                    <Badge variant="neutral" className="text-[10px]">{bl.tipo}</Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
+                    <Clock className="h-3 w-3" /> {formatDateTime(bl.data)}
+                  </p>
+                  <p className="text-[11px] text-danger-600 mt-1">{bl.tentativasConsulta}x tentativas de consulta</p>
+                </button>
+              ))}
             </CardContent>
           </Card>
 
-          <DocumentViewer
-            nome={selected.documento.nome}
-            paginas={selected.documento.paginas}
-            origemPath="/BLs/Pendentes"
-          />
-        </div>
-      </div>
+          {selected && (
+            <div className="space-y-6">
+              <Card>
+                <CardHeader className="flex-row items-start justify-between space-y-0">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <CardTitle>{selected.numeroBl}</CardTitle>
+                      <Badge variant="danger">Status Crítico</Badge>
+                    </div>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      BL identificado pelo OCR, porém não localizado como registro correspondente no GlobalSys.
+                    </p>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
+                    <InfoField label="Número BL" value={selected.numeroBl} />
+                    <InfoField label="Tipo" value={selected.tipo} />
+                    <InfoField label="Data" value={formatDateTime(selected.data)} icon={Calendar} />
+                    <InfoField label="Última tentativa" value={formatDateTime(selected.ultimaTentativa)} icon={Clock} />
+                  </div>
 
-      {/* Modal associar */}
+                  <div className="mt-5 flex flex-wrap gap-2">
+                    <Button onClick={handleConsultarNovamente} disabled={reprocessing}>
+                      {reprocessing ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <RefreshCcw className="h-4 w-4" />
+                      )}
+                      Consultar novamente
+                    </Button>
+                    <Button variant="accent" onClick={() => setAssocOpen(true)}>
+                      <Link2 className="h-4 w-4" /> Associar manualmente
+                    </Button>
+                    <Button variant="outline">
+                      <ExternalLink className="h-4 w-4" /> Abrir cadastro GlobalSys
+                    </Button>
+                    <Button variant="ghost" className="text-muted-foreground" onClick={handleIgnorar}>
+                      <XCircle className="h-4 w-4" /> Ignorar
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <DocumentViewer
+                nome={selected.documento.nome}
+                paginas={selected.documento.paginas}
+                origemPath={selected.documento.origemPath}
+              />
+            </div>
+          )}
+        </div>
+      )}
+
       <Dialog open={assocOpen} onOpenChange={setAssocOpen}>
         <DialogContent>
           <DialogHeader>
@@ -135,7 +235,7 @@ export default function BLNaoEncontrado() {
           <div className="space-y-3 py-2">
             <div className="space-y-1.5">
               <Label>Número BL no OCR</Label>
-              <Input value={selected.numeroBL} disabled />
+              <Input value={selected?.numeroBl ?? ""} disabled />
             </div>
             <div className="space-y-1.5">
               <Label>Número de referência no GlobalSys</Label>

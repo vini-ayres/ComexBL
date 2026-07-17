@@ -1,8 +1,8 @@
-import { useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { ColumnDef } from "@tanstack/react-table"
 import {
   Clock, AlertTriangle, UserCog, CheckCircle2, Timer, Search, Filter,
-  Eye, MoreHorizontal, RefreshCcw, Ship, ArrowRight,
+  Eye, MoreHorizontal, RefreshCcw, Ship, ArrowRight, Loader2, AlertCircle,
 } from "lucide-react"
 import { KpiCard } from "@/components/shared/KpiCard"
 import { DataTable } from "@/components/shared/DataTable"
@@ -15,10 +15,13 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { blList, kpis } from "@/data/mockData"
-import type { BLListItem, BLStatus } from "@/types"
+import { fetchDashboard } from "@/lib/api/dashboard"
+import type { DashboardBlListItemDto, DashboardKpiDto } from "@/lib/api/types"
+import type { BLStatus } from "@/types"
+import { ApiError } from "@/lib/api/client"
 import { formatDateTime, initials } from "@/lib/utils"
 import { useNavigate } from "react-router-dom"
+import { toast } from "sonner"
 
 const kpiIcons = [Clock, AlertTriangle, UserCog, CheckCircle2, Timer] as const
 const kpiTones = ["info", "danger", "warning", "success", "primary"] as const
@@ -33,37 +36,70 @@ const statusRouteMap: Record<BLStatus, string> = {
 
 export default function Dashboard() {
   const [search, setSearch] = useState("")
+  const [debouncedSearch, setDebouncedSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState<string>("todos")
   const [tipoFilter, setTipoFilter] = useState<string>("todos")
+  const [kpis, setKpis] = useState<DashboardKpiDto[]>([])
+  const [blList, setBlList] = useState<DashboardBlListItemDto[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const navigate = useNavigate()
 
-  const filteredData = useMemo(() => {
-    return blList.filter((item) => {
-      const matchesSearch =
-        !search ||
-        item.numeroBL.toLowerCase().includes(search.toLowerCase()) ||
-        item.navio?.toLowerCase().includes(search.toLowerCase()) ||
-        item.responsavel?.toLowerCase().includes(search.toLowerCase())
-      const matchesStatus = statusFilter === "todos" || item.status === statusFilter
-      const matchesTipo = tipoFilter === "todos" || item.tipo === tipoFilter
-      return matchesSearch && matchesStatus && matchesTipo
-    })
-  }, [search, statusFilter, tipoFilter])
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search.trim()), 350)
+    return () => clearTimeout(timer)
+  }, [search])
 
-  const columns: ColumnDef<BLListItem>[] = [
+  const loadDashboard = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+
+    try {
+      const result = await fetchDashboard({
+        page: 1,
+        pageSize: 100,
+        status: statusFilter !== "todos" ? statusFilter : undefined,
+        tipo: tipoFilter !== "todos" ? tipoFilter : undefined,
+        search: debouncedSearch || undefined,
+      })
+
+      setKpis(result.kpis)
+      setBlList(result.items.data)
+    } catch (err) {
+      const message = err instanceof ApiError
+        ? err.message
+        : "Não foi possível carregar o dashboard. Verifique se a API está rodando."
+      setError(message)
+      setKpis([])
+      setBlList([])
+    } finally {
+      setLoading(false)
+    }
+  }, [debouncedSearch, statusFilter, tipoFilter])
+
+  useEffect(() => {
+    void loadDashboard()
+  }, [loadDashboard])
+
+  function handleRefresh() {
+    void loadDashboard()
+    toast.success("Dashboard atualizado.")
+  }
+
+  const columns: ColumnDef<DashboardBlListItemDto>[] = useMemo(() => [
     {
       accessorKey: "status",
       header: "Status",
       cell: ({ row }) => <StatusBadge status={row.original.status} />,
     },
     {
-      accessorKey: "numeroBL",
+      accessorKey: "numeroBl",
       header: "Número BL",
       cell: ({ row }) => (
         <div className="flex flex-col">
-          <span className="font-semibold text-primary-900">{row.original.numeroBL}</span>
+          <span className="font-semibold text-primary-900">{row.original.numeroBl}</span>
           <span className="text-xs text-muted-foreground flex items-center gap-1">
-            <Ship className="h-3 w-3" /> {row.original.navio}
+            <Ship className="h-3 w-3" /> {row.original.navio ?? "-"}
           </span>
         </div>
       ),
@@ -100,14 +136,23 @@ export default function Dashboard() {
     {
       accessorKey: "dataHora",
       header: "Data/Hora",
-      cell: ({ row }) => <span className="text-sm text-muted-foreground tabular-nums">{formatDateTime(row.original.dataHora)}</span>,
+      cell: ({ row }) => (
+        <span className="text-sm text-muted-foreground tabular-nums">
+          {formatDateTime(row.original.dataHora)}
+        </span>
+      ),
     },
     {
       id: "acoes",
       header: "Ações",
       cell: ({ row }) => (
         <div className="flex items-center gap-1">
-          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => navigate(statusRouteMap[row.original.status])}>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            onClick={() => navigate(statusRouteMap[row.original.status])}
+          >
             <Eye className="h-4 w-4" />
           </Button>
           <DropdownMenu>
@@ -120,7 +165,7 @@ export default function Dashboard() {
               <DropdownMenuItem onClick={() => navigate(statusRouteMap[row.original.status])}>
                 <ArrowRight className="h-4 w-4" /> Ver detalhes
               </DropdownMenuItem>
-              <DropdownMenuItem>
+              <DropdownMenuItem disabled>
                 <RefreshCcw className="h-4 w-4" /> Reprocessar
               </DropdownMenuItem>
             </DropdownMenuContent>
@@ -128,11 +173,31 @@ export default function Dashboard() {
         </div>
       ),
     },
-  ]
+  ], [navigate])
+
+  if (loading && kpis.length === 0 && blList.length === 0 && !error) {
+    return (
+      <div className="flex flex-col items-center justify-center py-24 text-muted-foreground gap-3">
+        <Loader2 className="h-8 w-8 animate-spin" />
+        <p className="text-sm">Carregando dashboard operacional...</p>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">
-      {/* KPIs */}
+      {error && (
+        <div className="rounded-xl border border-danger-200 bg-danger-50 px-4 py-4 flex items-start gap-3">
+          <AlertCircle className="h-5 w-5 text-danger-600 shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <p className="text-sm text-danger-700">{error}</p>
+            <Button variant="outline" size="sm" className="mt-3" onClick={() => void loadDashboard()}>
+              Tentar novamente
+            </Button>
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
         {kpis.map((kpi, i) => (
           <KpiCard
@@ -141,26 +206,31 @@ export default function Dashboard() {
             value={kpi.value}
             delta={kpi.delta}
             suffix={kpi.suffix}
-            icon={kpiIcons[i]}
-            tone={kpiTones[i]}
+            icon={kpiIcons[i] ?? Clock}
+            tone={kpiTones[i] ?? "primary"}
             index={i}
           />
         ))}
       </div>
 
-      {/* Table Card */}
       <Card>
         <CardHeader className="flex-row items-center justify-between space-y-0 pb-2">
           <div>
             <CardTitle>BLs em Acompanhamento</CardTitle>
-            <p className="text-xs text-muted-foreground mt-1">Monitoramento em tempo real dos BLs processados via OCR/n8n</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Monitoramento operacional via BL_Workflow, BL_Master e BL_House
+            </p>
           </div>
-          <Button variant="outline" size="sm">
-            <RefreshCcw className="h-3.5 w-3.5" /> Atualizar
+          <Button variant="outline" size="sm" onClick={handleRefresh} disabled={loading}>
+            {loading ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <RefreshCcw className="h-3.5 w-3.5" />
+            )}
+            Atualizar
           </Button>
         </CardHeader>
         <CardContent>
-          {/* Filters */}
           <div className="flex flex-col sm:flex-row gap-3 mb-4">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -197,7 +267,13 @@ export default function Dashboard() {
             </Select>
           </div>
 
-          <DataTable columns={columns} data={filteredData} pageSize={8} />
+          {loading && blList.length === 0 ? (
+            <div className="flex items-center justify-center py-16 text-muted-foreground">
+              <Loader2 className="h-6 w-6 animate-spin" />
+            </div>
+          ) : (
+            <DataTable columns={columns} data={blList} pageSize={8} />
+          )}
         </CardContent>
       </Card>
     </div>
