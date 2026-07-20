@@ -30,3 +30,20 @@ export class BadRequestError extends AppError {
     this.name = 'BadRequestError';
   }
 }
+
+export class ConflictError extends AppError {
+  constructor(message = 'Conflito de dados') {
+    super(409, message);
+    this.name = 'ConflictError';
+  }
+}
+
+export class ValidationError extends AppError {
+  constructor(
+    message = 'Validação falhou',
+    public readonly issues: { code: string; message: string; field?: string }[] = [],
+  ) {
+    super(422, message);
+    this.name = 'ValidationError';
+  }
+}

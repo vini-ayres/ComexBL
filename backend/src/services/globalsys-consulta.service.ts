@@ -1,22 +1,36 @@
+import { isBlVersion, type BlVersion } from '../constants/bl-version.constants.js';
 import { BadRequestError, NotFoundError } from '../errors/AppError.js';
 import {
   mapBlNaoEncontradoDetail,
   mapBlNaoEncontradoListItem,
 } from '../mappers/bl-nao-encontrado.mapper.js';
+import { BlConsultaGlobalSysRepository } from '../repositories/bl-consulta-globalsys.repository.js';
+import { BlHouseRepository } from '../repositories/bl-house.repository.js';
+import { BlMasterRepository } from '../repositories/bl-master.repository.js';
 import { BlNaoEncontradoRepository } from '../repositories/bl-nao-encontrado.repository.js';
-import { GlobalSysBlRepository } from '../repositories/globalsys-bl.repository.js';
 import type {
   BlNaoEncontradoDetailDto,
   BlNaoEncontradoListResponse,
   GlobalSysConsultaResponseDto,
 } from '../types/bl-nao-encontrado.types.js';
+import type { BlDocumentType } from '../types/bl-domain.types.js';
 import type { PaginationQuery } from '../types/bl.types.js';
 import { buildPaginatedResult, getSkipTake } from '../utils/pagination.js';
+import type { GlobalSysService } from './globalsys.service.js';
+
+interface BlDocumentIdentity {
+  documentType: BlDocumentType;
+  documentNumber: string;
+  blVersion: BlVersion;
+}
 
 export class GlobalSysConsultaService {
   constructor(
     private readonly localRepository: BlNaoEncontradoRepository,
-    private readonly globalSysRepository: GlobalSysBlRepository,
+    private readonly globalSysService: GlobalSysService,
+    private readonly consultaRepository: BlConsultaGlobalSysRepository,
+    private readonly masterRepository: BlMasterRepository,
+    private readonly houseRepository: BlHouseRepository,
   ) {}
 
   async listNotFound(
@@ -62,10 +76,10 @@ export class GlobalSysConsultaService {
     blId: number,
   ): Promise<GlobalSysConsultaResponseDto> {
     const tipo = this.parseTipo(tipoParam);
-    const latestSuccess = await this.localRepository.getLatestConsultaSuccess(
-      tipo,
-      blId,
-    );
+    const latestSuccess =
+      tipo === 'Master'
+        ? await this.consultaRepository.getLatestSuccessByMasterId(blId)
+        : await this.consultaRepository.getLatestSuccessByHouseId(blId);
 
     if (latestSuccess === true) {
       throw new BadRequestError(
@@ -81,53 +95,74 @@ export class GlobalSysConsultaService {
     blId: number,
   ): Promise<GlobalSysConsultaResponseDto> {
     const tipo = this.parseTipo(tipoParam);
-    const numeroBl = await this.resolveNumeroBl(tipo, blId);
-    const consulta = await this.globalSysRepository.findByNumeroBl(numeroBl);
+    const identity = await this.resolveDocumentIdentity(tipo, blId);
+    const user = await this.localRepository.findTestUser();
 
-    const detalhe = consulta.found
-      ? 'BL localizado no GlobalSys'
-      : 'Não encontrado no GlobalSys';
+    if (!user) {
+      throw new Error(
+        'Usuário de teste "teste" não encontrado. Execute npm run prisma:seed.',
+      );
+    }
 
-    const result = await this.localRepository.recordConsulta({
-      tipo,
-      blId,
-      found: consulta.found,
-      detalhe,
-    });
+    const result = await this.globalSysService.executeConsulta(
+      identity.documentType,
+      identity.documentNumber,
+      identity.blVersion,
+      user.Id,
+    );
 
     return {
-      found: consulta.found,
+      found: result.found,
       tentativaNumero: result.tentativaNumero,
       workflowStatus: result.workflowStatus,
-      detalhe,
-      numeroBl,
+      detalhe: result.detalhe,
+      numeroBl: result.numeroBl,
     };
   }
 
-  private async resolveNumeroBl(
-    tipo: 'Master' | 'House',
+  /**
+   * REST continua recebendo Id; domínio resolve para número + BlVersion.
+   */
+  private async resolveDocumentIdentity(
+    tipo: BlDocumentType,
     blId: number,
-  ): Promise<string> {
+  ): Promise<BlDocumentIdentity> {
     if (tipo === 'Master') {
-      const master = await this.localRepository.findMasterById(blId);
+      const result = await this.masterRepository.findById(blId);
 
-      if (!master) {
+      if (!result) {
         throw new NotFoundError(`BL Master ${blId} não encontrado`);
       }
 
-      return master.MasterNumber;
+      return {
+        documentType: 'Master',
+        documentNumber: result.master.MasterNumber,
+        blVersion: this.parseBlVersion(result.master.BlVersion),
+      };
     }
 
-    const house = await this.localRepository.findHouseById(blId);
+    const house = await this.houseRepository.findById(blId);
 
     if (!house) {
       throw new NotFoundError(`BL House ${blId} não encontrado`);
     }
 
-    return house.HouseNumber;
+    return {
+      documentType: 'House',
+      documentNumber: house.house.HouseNumber,
+      blVersion: this.parseBlVersion(house.house.BlVersion),
+    };
   }
 
-  private parseTipo(value: string): 'Master' | 'House' {
+  private parseBlVersion(value: string): BlVersion {
+    if (!isBlVersion(value)) {
+      throw new BadRequestError(`BlVersion inválido no registro: ${value}`);
+    }
+
+    return value;
+  }
+
+  private parseTipo(value: string): BlDocumentType {
     const normalized = value.trim().toLowerCase();
 
     if (normalized === 'master') {

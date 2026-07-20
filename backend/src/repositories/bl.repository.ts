@@ -1,173 +1,32 @@
-import type { BlHouse, BlMaster } from '@prisma/client';
-import { prisma } from '../prisma/client.js';
-import type { PaginationQuery } from '../types/bl.types.js';
-import { getSkipTake } from '../utils/pagination.js';
+export {
+  BlMasterRepository,
+  blMasterRepository,
+  type BlMasterListFilters,
+} from './bl-master.repository.js';
 
-export interface BlMasterListFilters {
-  status?: string;
-  search?: string;
-}
+export {
+  BlHouseRepository,
+  blHouseRepository,
+  type BlHouseListFilters,
+} from './bl-house.repository.js';
 
-export interface BlHouseListFilters {
-  masterId?: number;
-  status?: string;
-  search?: string;
-}
+export {
+  BlWorkflowRepository,
+  blWorkflowRepository,
+} from './bl-workflow.repository.js';
 
-export class BlMasterRepository {
-  async findMany(
-    pagination: PaginationQuery,
-    filters: BlMasterListFilters = {},
-  ): Promise<{ items: BlMaster[]; total: number }> {
-    const { skip, take } = getSkipTake(pagination);
-    const where = this.buildWhere(filters);
+export {
+  BlDivergenciaRepository,
+  blDivergenciaRepository,
+  type UpsertDivergenciaInput,
+} from './bl-divergencia.repository.js';
 
-    const [items, total] = await prisma.$transaction([
-      prisma.blMaster.findMany({
-        where,
-        orderBy: { Id: 'desc' },
-        skip,
-        take,
-      }),
-      prisma.blMaster.count({ where }),
-    ]);
+export {
+  BlDivergenciaCampoRepository,
+  blDivergenciaCampoRepository,
+} from './bl-divergencia-campo.repository.js';
 
-    return { items, total };
-  }
-
-  async findById(id: number): Promise<{
-    master: BlMaster;
-    houses: BlHouse[];
-  } | null> {
-    const master = await prisma.blMaster.findUnique({
-      where: { Id: id },
-    });
-
-    if (!master) {
-      return null;
-    }
-
-    const houses = await prisma.blHouse.findMany({
-      where: { BLMasterId: id },
-      orderBy: { HouseNumber: 'asc' },
-    });
-
-    return { master, houses };
-  }
-
-  async count(): Promise<number> {
-    return prisma.blMaster.count();
-  }
-
-  private buildWhere(filters: BlMasterListFilters) {
-    const conditions: object[] = [];
-
-    if (filters.status === 'finalizado') {
-      conditions.push({ Status: true });
-    } else if (filters.status === 'processando') {
-      conditions.push({ Status: false });
-    }
-
-    if (filters.search) {
-      conditions.push({
-        OR: [
-          { MasterNumber: { contains: filters.search } },
-          { VesselName: { contains: filters.search } },
-          { Voyage: { contains: filters.search } },
-        ],
-      });
-    }
-
-    if (conditions.length === 0) {
-      return undefined;
-    }
-
-    return { AND: conditions };
-  }
-}
-
-export class BlHouseRepository {
-  async findMany(
-    pagination: PaginationQuery,
-    filters: BlHouseListFilters = {},
-  ): Promise<{ items: BlHouse[]; total: number }> {
-    const { skip, take } = getSkipTake(pagination);
-    const where = this.buildWhere(filters);
-
-    const [items, total] = await prisma.$transaction([
-      prisma.blHouse.findMany({
-        where,
-        orderBy: { Id: 'desc' },
-        skip,
-        take,
-      }),
-      prisma.blHouse.count({ where }),
-    ]);
-
-    return { items, total };
-  }
-
-  async findById(id: number): Promise<{
-    house: BlHouse;
-    master: BlMaster | null;
-  } | null> {
-    const house = await prisma.blHouse.findUnique({
-      where: { Id: id },
-    });
-
-    if (!house) {
-      return null;
-    }
-
-    const master = house.BLMasterId
-      ? await prisma.blMaster.findUnique({
-          where: { Id: house.BLMasterId },
-        })
-      : null;
-
-    return { house, master };
-  }
-
-  async findByMasterId(masterId: number): Promise<BlHouse[]> {
-    return prisma.blHouse.findMany({
-      where: { BLMasterId: masterId },
-      orderBy: { HouseNumber: 'asc' },
-    });
-  }
-
-  async count(): Promise<number> {
-    return prisma.blHouse.count();
-  }
-
-  private buildWhere(filters: BlHouseListFilters) {
-    const conditions: object[] = [];
-
-    if (filters.masterId) {
-      conditions.push({ BLMasterId: filters.masterId });
-    }
-
-    if (filters.status === 'finalizado') {
-      conditions.push({ Status: true });
-    } else if (filters.status === 'processando') {
-      conditions.push({ Status: false });
-    }
-
-    if (filters.search) {
-      conditions.push({
-        OR: [
-          { HouseNumber: { contains: filters.search } },
-          { ItemName: { contains: filters.search } },
-        ],
-      });
-    }
-
-    if (conditions.length === 0) {
-      return undefined;
-    }
-
-    return { AND: conditions };
-  }
-}
-
-export const blMasterRepository = new BlMasterRepository();
-export const blHouseRepository = new BlHouseRepository();
+export {
+  BlConsultaGlobalSysRepository,
+  blConsultaGlobalSysRepository,
+} from './bl-consulta-globalsys.repository.js';

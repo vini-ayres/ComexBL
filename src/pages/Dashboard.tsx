@@ -19,6 +19,7 @@ import { fetchDashboard } from "@/lib/api/dashboard"
 import type { DashboardBlListItemDto, DashboardKpiDto } from "@/lib/api/types"
 import type { BLStatus } from "@/types"
 import { ApiError } from "@/lib/api/client"
+import { buildDocumentSearchParams } from "@/hooks/useDocumentParams"
 import { formatDateTime, initials } from "@/lib/utils"
 import { useNavigate } from "react-router-dom"
 import { toast } from "sonner"
@@ -86,6 +87,14 @@ export default function Dashboard() {
     toast.success("Dashboard atualizado.")
   }
 
+  function navigateToBl(item: DashboardBlListItemDto) {
+    const params = buildDocumentSearchParams({
+      tipo: item.tipo,
+      documentNumber: item.numeroBl,
+    })
+    navigate(`${statusRouteMap[item.status]}?${params}`)
+  }
+
   const columns: ColumnDef<DashboardBlListItemDto>[] = useMemo(() => [
     {
       accessorKey: "status",
@@ -151,7 +160,7 @@ export default function Dashboard() {
             variant="ghost"
             size="icon"
             className="h-8 w-8"
-            onClick={() => navigate(statusRouteMap[row.original.status])}
+            onClick={() => navigateToBl(row.original)}
           >
             <Eye className="h-4 w-4" />
           </Button>
@@ -162,7 +171,7 @@ export default function Dashboard() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => navigate(statusRouteMap[row.original.status])}>
+              <DropdownMenuItem onClick={() => navigateToBl(row.original)}>
                 <ArrowRight className="h-4 w-4" /> Ver detalhes
               </DropdownMenuItem>
               <DropdownMenuItem disabled>

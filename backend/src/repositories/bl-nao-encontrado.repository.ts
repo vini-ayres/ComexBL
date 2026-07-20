@@ -1,15 +1,7 @@
-import type { Prisma } from '@prisma/client';
-import { prisma } from '../prisma/client.js';
 import type { BlNaoEncontradoQueueRow } from '../types/bl-nao-encontrado.types.js';
+import { prisma } from '../prisma/client.js';
 
 const TEST_USER_LOGIN = 'teste';
-
-export interface RecordConsultaParams {
-  tipo: 'Master' | 'House';
-  blId: number;
-  found: boolean;
-  detalhe: string;
-}
 
 export class BlNaoEncontradoRepository {
   async findQueueRows(): Promise<BlNaoEncontradoQueueRow[]> {
@@ -103,145 +95,9 @@ export class BlNaoEncontradoRepository {
     }));
   }
 
-  async findMasterById(id: number) {
-    return prisma.blMaster.findUnique({ where: { Id: id } });
-  }
-
-  async findHouseById(id: number) {
-    return prisma.blHouse.findUnique({ where: { Id: id } });
-  }
-
-  async countConsultas(tipo: 'Master' | 'House', blId: number): Promise<number> {
-    if (tipo === 'Master') {
-      return prisma.blConsultaGlobalSys.count({
-        where: { BlMasterId: blId },
-      });
-    }
-
-    return prisma.blConsultaGlobalSys.count({
-      where: { BlHouseId: blId },
-    });
-  }
-
-  async getLatestConsultaSuccess(
-    tipo: 'Master' | 'House',
-    blId: number,
-  ): Promise<boolean | null> {
-    const latest = await prisma.blConsultaGlobalSys.findFirst({
-      where:
-        tipo === 'Master'
-          ? { BlMasterId: blId }
-          : { BlHouseId: blId },
-      orderBy: { ExecutadoEm: 'desc' },
-      select: { Sucesso: true },
-    });
-
-    return latest?.Sucesso ?? null;
-  }
-
   async findTestUser() {
     return prisma.appUser.findUnique({
       where: { Login: TEST_USER_LOGIN },
-    });
-  }
-
-  async recordConsulta(params: RecordConsultaParams): Promise<{
-    tentativaNumero: number;
-    workflowStatus: string;
-  }> {
-    const user = await this.findTestUser();
-
-    if (!user) {
-      throw new Error(
-        `Usuário de teste "${TEST_USER_LOGIN}" não encontrado. Execute npm run prisma:seed.`,
-      );
-    }
-
-    const tentativaNumero = (await this.countConsultas(params.tipo, params.blId)) + 1;
-    const workflowStatus = params.found ? 'processando' : 'nao_encontrado';
-    const pendencia = params.found
-      ? 'BL localizado no GlobalSys'
-      : 'BL não localizado no GlobalSys';
-
-    await prisma.$transaction(async (tx) => {
-      await tx.blConsultaGlobalSys.create({
-        data: {
-          BlMasterId: params.tipo === 'Master' ? params.blId : null,
-          BlHouseId: params.tipo === 'House' ? params.blId : null,
-          TentativaNumero: tentativaNumero,
-          Sucesso: params.found,
-          Detalhe: params.detalhe,
-        },
-      });
-
-      await this.upsertWorkflow(tx, {
-        tipo: params.tipo,
-        blId: params.blId,
-        status: workflowStatus,
-        pendencia,
-        userId: user.Id,
-      });
-    });
-
-    return { tentativaNumero, workflowStatus };
-  }
-
-  private async upsertWorkflow(
-    tx: Prisma.TransactionClient,
-    params: {
-      tipo: 'Master' | 'House';
-      blId: number;
-      status: string;
-      pendencia: string;
-      userId: number;
-    },
-  ): Promise<void> {
-    const workflowData = {
-      TipoBl: params.tipo,
-      Status: params.status,
-      Pendencia: params.pendencia,
-      ResponsavelUserId: params.userId,
-    };
-
-    if (params.tipo === 'Master') {
-      const existing = await tx.blWorkflow.findUnique({
-        where: { BlMasterId: params.blId },
-      });
-
-      if (existing) {
-        await tx.blWorkflow.update({
-          where: { Id: existing.Id },
-          data: workflowData,
-        });
-        return;
-      }
-
-      await tx.blWorkflow.create({
-        data: {
-          BlMasterId: params.blId,
-          ...workflowData,
-        },
-      });
-      return;
-    }
-
-    const existing = await tx.blWorkflow.findUnique({
-      where: { BlHouseId: params.blId },
-    });
-
-    if (existing) {
-      await tx.blWorkflow.update({
-        where: { Id: existing.Id },
-        data: workflowData,
-      });
-      return;
-    }
-
-    await tx.blWorkflow.create({
-      data: {
-        BlHouseId: params.blId,
-        ...workflowData,
-      },
     });
   }
 }

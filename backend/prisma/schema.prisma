@@ -7,14 +7,27 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ---------------------------------------------------------------------------
+/// Versão do documento BL: exatamente um DRAFT e um FINAL por número de BL.
+/// Valores permitidos: DRAFT | FINAL (SQL Server não suporta enum nativo no Prisma).
 // Entidades OCR / n8n (somente leitura na aplicação)
+//
+// Identidade técnica: Id (PK) + BLMasterId (FK House → Master)
+// Chaves de negócio: MasterNumber, HouseNumber, ContainerNumber, BlVersion
+//
+// Associação Master ↔ House:
+//   FK técnica: BlHouse.BLMasterId → BlMaster.Id
+//   Chave de localização na ingestão (n8n): (ContainerNumber, BlVersion)
+//   Consistência de domínio (RelationshipValidator, camada de aplicação):
+//     - House.ContainerNumber == Master.ContainerNumber
+//     - House.BlVersion == Master.BlVersion
+//   Proibido: House DRAFT associado a Master FINAL (e vice-versa)
 // ---------------------------------------------------------------------------
 
 model BlMaster {
   Id                       Int       @id(map: "PK_BL_Master") @default(autoincrement())
   ReferenceNumber          String?   @db.VarChar(50)
-  MasterNumber             String    @unique(map: "UQ_BL_Master_MasterNumber") @db.VarChar(50)
+  MasterNumber             String    @db.VarChar(50)
+  BlVersion                String    @default("DRAFT") @db.VarChar(10)
   BLTypeExportImport       String?   @db.Char(1)
   VesselName               String?   @db.NVarChar(200)
   Voyage                   String?   @db.VarChar(50)
@@ -30,6 +43,7 @@ model BlMaster {
   CarrierSCACCode          String?   @db.VarChar(20)
   CarrierName              String?   @db.NVarChar(300)
   CargoTypeLclFclBulk      String?   @db.Char(1)
+  LoadType                 String?   @db.VarChar(3)
   ServiceTerm              String?   @db.VarChar(30)
   FreightTerm              String?   @db.VarChar(10)
   LoadingPortCode          String?   @db.VarChar(10)
@@ -41,6 +55,7 @@ model BlMaster {
   FinalDestinationPortCode String?   @db.VarChar(10)
   FinalDestinationPortName String?   @db.NVarChar(200)
   ContainerNumber          String?   @db.VarChar(20)
+  ContainerSealNo1         String?   @db.VarChar(30)
   ContainerType            String?   @db.VarChar(20)
   PackingQuantity          Int?
   PackingQuantityUnitCode  String?   @db.VarChar(10)
@@ -59,18 +74,23 @@ model BlMaster {
   consultasGlobalSys  BlConsultaGlobalSys[]
 
   @@index([ContainerNumber], map: "IX_BL_Master_ContainerNumber")
+  @@index([ContainerNumber, BlVersion], map: "IX_BL_Master_ContainerNumber_BlVersion")
   @@index([DeliveryPortCode], map: "IX_BL_Master_DeliveryPortCode")
   @@index([LoadingPortCode], map: "IX_BL_Master_LoadingPortCode")
   @@index([OnboardDate], map: "IX_BL_Master_OnboardDate")
   @@index([VesselName], map: "IX_BL_Master_VesselName")
   @@index([Status], map: "IX_BL_Master_Status")
+  @@index([MasterNumber], map: "IX_BL_Master_MasterNumber")
+  @@index([BlVersion], map: "IX_BL_Master_BlVersion")
+  @@unique([MasterNumber, BlVersion], map: "UQ_BL_Master_MasterNumber_BlVersion")
   @@map("BL_Master")
 }
 
 model BlHouse {
   Id                      Int       @id(map: "PK_BL_House") @default(autoincrement())
   BLMasterId              Int?
-  HouseNumber             String    @unique(map: "UQ_BL_House_HouseNumber") @db.VarChar(50)
+  HouseNumber             String    @db.VarChar(50)
+  BlVersion               String    @default("DRAFT") @db.VarChar(10)
   ShipperName             String?   @db.NVarChar(300)
   ShipperAddress          String?
   ConsigneeName           String?   @db.NVarChar(300)
@@ -108,6 +128,8 @@ model BlHouse {
   DriveId                 String?   @db.NVarChar(255)
 
   master             BlMaster?              @relation(fields: [BLMasterId], references: [Id], onDelete: NoAction, onUpdate: NoAction, map: "FK_BL_House_BL_Master")
+  cargos             BlHouseCargo[]
+  ncms               BlHouseNcm[]
   camposRevisao      BlCampoRevisao[]
   historico          BlHistoricoAlteracao[]
   workflow           BlWorkflow?
@@ -117,8 +139,41 @@ model BlHouse {
 
   @@index([BLMasterId], map: "IX_BL_House_BLMasterId")
   @@index([ContainerNumber], map: "IX_BL_House_ContainerNumber")
+  @@index([ContainerNumber, BlVersion], map: "IX_BL_House_ContainerNumber_BlVersion")
   @@index([Status], map: "IX_BL_House_Status")
+  @@index([HouseNumber], map: "IX_BL_House_HouseNumber")
+  @@index([BlVersion], map: "IX_BL_House_BlVersion")
+  @@unique([HouseNumber, BlVersion], map: "UQ_BL_House_HouseNumber_BlVersion")
   @@map("BL_House")
+}
+
+/// CARGOGRP/CARGO do XML JTIT — detalhes de carga por House (OCR / n8n)
+model BlHouseCargo {
+  Id          Int     @id(map: "PK_BL_House_Cargo") @default(autoincrement())
+  BlHouseId   Int
+  Brand       String? @db.NVarChar(55)
+  CounterMark String? @db.NVarChar(55)
+  CargoType   String? @db.NVarChar(100)
+  HazardClass String? @db.VarChar(4)
+  UNNumber    String? @db.VarChar(6)
+  Packaging   String? @db.NVarChar(100)
+
+  house BlHouse @relation(fields: [BlHouseId], references: [Id], onDelete: Cascade, onUpdate: NoAction, map: "FK_BL_House_Cargo_BL_House")
+
+  @@index([BlHouseId], map: "IX_BL_House_Cargo_BlHouseId")
+  @@map("BL_House_Cargo")
+}
+
+/// NCMGRP do XML JTIT — códigos NCM por House (OCR / n8n)
+model BlHouseNcm {
+  Id        Int    @id(map: "PK_BL_House_NCM") @default(autoincrement())
+  BlHouseId Int
+  NcmCode   String @db.VarChar(20)
+
+  house BlHouse @relation(fields: [BlHouseId], references: [Id], onDelete: Cascade, onUpdate: NoAction, map: "FK_BL_House_NCM_BL_House")
+
+  @@index([BlHouseId], map: "IX_BL_House_NCM_BlHouseId")
+  @@map("BL_House_NCM")
 }
 
 // ---------------------------------------------------------------------------

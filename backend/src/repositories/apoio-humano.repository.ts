@@ -97,11 +97,15 @@ export class ApoioHumanoRepository {
     });
   }
 
-  async saveCampos(params: SaveApoioHumanoParams): Promise<{
+  async saveCampos(
+    params: SaveApoioHumanoParams,
+    tx?: Prisma.TransactionClient,
+  ): Promise<{
     saved: number;
     completed: boolean;
     historico: BlHistoricoAlteracao[];
   }> {
+    const client = tx ?? prisma;
     const user = await this.findTestUser();
 
     if (!user) {
@@ -127,63 +131,59 @@ export class ApoioHumanoRepository {
     const historicoRecords: BlHistoricoAlteracao[] = [];
     let saved = 0;
 
-    await prisma.$transaction(async (tx) => {
-      for (const campo of params.campos) {
-        const existing = existingByKey.get(campo.campoKey);
-        const hasChange = this.hasCampoChanged(existing, campo);
+    for (const campo of params.campos) {
+      const existing = existingByKey.get(campo.campoKey);
+      const hasChange = this.hasCampoChanged(existing, campo);
 
-        const revision = existing
-          ? await tx.blCampoRevisao.update({
-              where: { Id: existing.Id },
-              data: {
-                CampoLabel: campo.campoLabel,
-                ValorRecebido: campo.valorRecebido,
-                ValorManual: campo.valorManual,
-                Confianca: campo.confianca,
-                Status: campo.status,
-                UpdatedByUserId: user.Id,
-              },
-            })
-          : await tx.blCampoRevisao.create({
-              data: {
-                BlMasterId: params.tipo === 'Master' ? params.blId : null,
-                BlHouseId: params.tipo === 'House' ? params.blId : null,
-                CampoKey: campo.campoKey,
-                CampoLabel: campo.campoLabel,
-                ValorRecebido: campo.valorRecebido,
-                ValorManual: campo.valorManual,
-                Confianca: campo.confianca,
-                Status: campo.status,
-                UpdatedByUserId: user.Id,
-              },
-            });
+      const revision = existing
+        ? await client.blCampoRevisao.update({
+            where: { Id: existing.Id },
+            data: {
+              CampoLabel: campo.campoLabel,
+              ValorRecebido: campo.valorRecebido,
+              ValorManual: campo.valorManual,
+              Confianca: campo.confianca,
+              Status: campo.status,
+              UpdatedByUserId: user.Id,
+            },
+          })
+        : await client.blCampoRevisao.create({
+            data: {
+              BlMasterId: params.tipo === 'Master' ? params.blId : null,
+              BlHouseId: params.tipo === 'House' ? params.blId : null,
+              CampoKey: campo.campoKey,
+              CampoLabel: campo.campoLabel,
+              ValorRecebido: campo.valorRecebido,
+              ValorManual: campo.valorManual,
+              Confianca: campo.confianca,
+              Status: campo.status,
+              UpdatedByUserId: user.Id,
+            },
+          });
 
-        existingByKey.set(campo.campoKey, revision);
+      existingByKey.set(campo.campoKey, revision);
 
-        if (!hasChange) {
-          continue;
-        }
-
-        saved += 1;
-
-        const historico = await tx.blHistoricoAlteracao.create({
-          data: {
-            BlMasterId: params.tipo === 'Master' ? params.blId : null,
-            BlHouseId: params.tipo === 'House' ? params.blId : null,
-            UserId: user.Id,
-            Usuario: user.DisplayName,
-            Campo: campo.campoLabel,
-            ValorAntes: this.resolveValorAntes(existing, campo),
-            ValorDepois: this.resolveValorDepois(campo),
-            Acao: campo.status === 'confirmado' ? 'confirmacao' : 'edicao',
-          },
-        });
-
-        historicoRecords.push(historico);
+      if (!hasChange) {
+        continue;
       }
 
-      await this.upsertWorkflow(tx, params, user.Id);
-    });
+      saved += 1;
+
+      const historico = await client.blHistoricoAlteracao.create({
+        data: {
+          BlMasterId: params.tipo === 'Master' ? params.blId : null,
+          BlHouseId: params.tipo === 'House' ? params.blId : null,
+          UserId: user.Id,
+          Usuario: user.DisplayName,
+          Campo: campo.campoLabel,
+          ValorAntes: this.resolveValorAntes(existing, campo),
+          ValorDepois: this.resolveValorDepois(campo),
+          Acao: campo.status === 'confirmado' ? 'confirmacao' : 'edicao',
+        },
+      });
+
+      historicoRecords.push(historico);
+    }
 
     const completed = !params.campos.some((campo) => campo.status === 'pendente');
 
@@ -219,66 +219,6 @@ export class ApoioHumanoRepository {
 
   private resolveValorDepois(campo: SaveApoioHumanoCampoInput): string {
     return campo.valorManual ?? campo.valorRecebido;
-  }
-
-  private async upsertWorkflow(
-    tx: Prisma.TransactionClient,
-    params: SaveApoioHumanoParams,
-    userId: number,
-  ): Promise<void> {
-    const pendentes = params.campos.filter((campo) => campo.status === 'pendente').length;
-    const confianca = Math.min(...params.campos.map((campo) => campo.confianca));
-    const workflowData = {
-      TipoBl: params.tipo,
-      Status: pendentes > 0 ? 'apoio_humano' : 'processando',
-      Pendencia:
-        pendentes > 0
-          ? `${pendentes} campo(s) aguardando revisão humana`
-          : 'Revisão humana concluída',
-      ResponsavelUserId: userId,
-      Confianca: confianca,
-    };
-
-    if (params.tipo === 'Master') {
-      const existing = await tx.blWorkflow.findUnique({
-        where: { BlMasterId: params.blId },
-      });
-
-      if (existing) {
-        await tx.blWorkflow.update({
-          where: { Id: existing.Id },
-          data: workflowData,
-        });
-        return;
-      }
-
-      await tx.blWorkflow.create({
-        data: {
-          BlMasterId: params.blId,
-          ...workflowData,
-        },
-      });
-      return;
-    }
-
-    const existing = await tx.blWorkflow.findUnique({
-      where: { BlHouseId: params.blId },
-    });
-
-    if (existing) {
-      await tx.blWorkflow.update({
-        where: { Id: existing.Id },
-        data: workflowData,
-      });
-      return;
-    }
-
-    await tx.blWorkflow.create({
-      data: {
-        BlHouseId: params.blId,
-        ...workflowData,
-      },
-    });
   }
 }
 

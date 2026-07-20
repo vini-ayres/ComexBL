@@ -6,6 +6,7 @@ import {
   mapMasterApoioHumano,
   mergeCamposComRevisoes,
 } from '../mappers/apoio-humano.mapper.js';
+import { prisma } from '../prisma/client.js';
 import { ApoioHumanoRepository } from '../repositories/apoio-humano.repository.js';
 import type {
   ApoioHumanoDetailDto,
@@ -15,9 +16,13 @@ import type {
 } from '../types/apoio-humano.types.js';
 import type { PaginationQuery } from '../types/bl.types.js';
 import { getSkipTake } from '../utils/pagination.js';
+import type { WorkflowService } from './workflow.service.js';
 
 export class ApoioHumanoService {
-  constructor(private readonly repository: ApoioHumanoRepository) {}
+  constructor(
+    private readonly repository: ApoioHumanoRepository,
+    private readonly workflowService: WorkflowService,
+  ) {}
 
   async getQueueItem(
     pagination: PaginationQuery,
@@ -73,10 +78,67 @@ export class ApoioHumanoService {
     }
 
     try {
-      const result = await this.repository.saveCampos({
-        tipo,
-        blId,
-        campos: payload.campos,
+      const user = await this.repository.findTestUser();
+
+      if (!user) {
+        throw new Error(
+          'Usuário de teste "teste" não encontrado. Execute npm run prisma:seed.',
+        );
+      }
+
+      const pendentes = payload.campos.filter(
+        (campo) => campo.status === 'pendente',
+      ).length;
+      const confianca = Math.min(
+        ...payload.campos.map((campo) => campo.confianca),
+      );
+      const workflowData = {
+        status: pendentes > 0 ? 'apoio_humano' : 'processando',
+        pendencia:
+          pendentes > 0
+            ? `${pendentes} campo(s) aguardando revisão humana`
+            : 'Revisão humana concluída',
+        responsavelUserId: user.Id,
+        confianca,
+      };
+
+      const result = await prisma.$transaction(async (tx) => {
+        const saveResult = await this.repository.saveCampos(
+          {
+            tipo,
+            blId,
+            campos: payload.campos,
+          },
+          tx,
+        );
+
+        if (tipo === 'Master') {
+          const master = await this.repository.findMasterById(blId);
+
+          if (!master) {
+            throw new NotFoundError(`BL Master ${blId} não encontrado`);
+          }
+
+          await this.workflowService.updateWorkflowForMasterDocument(
+            master,
+            workflowData,
+            tx,
+          );
+        } else {
+          const house = await this.repository.findHouseById(blId);
+
+          if (!house) {
+            throw new NotFoundError(`BL House ${blId} não encontrado`);
+          }
+
+          await this.workflowService.updateWorkflowForHouseDocument(
+            house,
+            workflowData,
+            tx,
+          );
+        }
+
+        return saveResult;
       });
 
       return {

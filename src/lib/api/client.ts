@@ -10,6 +10,19 @@ export class ApiError extends Error {
   }
 }
 
+async function parseApiError(response: Response): Promise<never> {
+  let message = `Erro ${response.status}`
+
+  try {
+    const body = (await response.json()) as { message?: string }
+    if (body.message) message = body.message
+  } catch {
+    // ignore parse errors
+  }
+
+  throw new ApiError(response.status, message)
+}
+
 export async function apiGet<T>(path: string, params?: Record<string, string | number | undefined>): Promise<T> {
   const url = new URL(`${API_BASE}${path}`, window.location.origin)
 
@@ -26,16 +39,7 @@ export async function apiGet<T>(path: string, params?: Record<string, string | n
   })
 
   if (!response.ok) {
-    let message = `Erro ${response.status}`
-
-    try {
-      const body = (await response.json()) as { message?: string }
-      if (body.message) message = body.message
-    } catch {
-      // ignore parse errors
-    }
-
-    throw new ApiError(response.status, message)
+    return parseApiError(response)
   }
 
   return response.json() as Promise<T>
@@ -57,16 +61,29 @@ export async function apiPost<T>(
   })
 
   if (!response.ok) {
-    let message = `Erro ${response.status}`
+    return parseApiError(response)
+  }
 
-    try {
-      const errorBody = (await response.json()) as { message?: string }
-      if (errorBody.message) message = errorBody.message
-    } catch {
-      // ignore parse errors
-    }
+  return response.json() as Promise<T>
+}
 
-    throw new ApiError(response.status, message)
+export async function apiPatch<T>(
+  path: string,
+  body: unknown,
+): Promise<T> {
+  const url = new URL(`${API_BASE}${path}`, window.location.origin)
+
+  const response = await fetch(url.toString(), {
+    method: 'PATCH',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  })
+
+  if (!response.ok) {
+    return parseApiError(response)
   }
 
   return response.json() as Promise<T>
