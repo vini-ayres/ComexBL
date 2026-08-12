@@ -1,7 +1,13 @@
 import type { BlNaoEncontradoQueueRow } from '../types/bl-nao-encontrado.types.js';
+import type { BlDocumentType } from '../types/bl-domain.types.js';
 import { prisma } from '../prisma/client.js';
 
 const TEST_USER_LOGIN = 'teste';
+
+export interface BlDocumentPendingConsulta {
+  tipo: BlDocumentType;
+  blId: number;
+}
 
 export class BlNaoEncontradoRepository {
   async findQueueRows(): Promise<BlNaoEncontradoQueueRow[]> {
@@ -92,6 +98,31 @@ export class BlNaoEncontradoRepository {
       ultimoDetalhe: row.ultimoDetalhe,
       driveId: row.driveId,
       dataReferencia: row.dataReferencia,
+    }));
+  }
+
+  async findDocumentsPendingConsulta(): Promise<BlDocumentPendingConsulta[]> {
+    const rows = await prisma.$queryRaw<
+      { tipo: string; blId: number }[]
+    >`
+      SELECT 'Master' AS tipo, m.Id AS blId
+      FROM BL_Master m
+      WHERE NOT EXISTS (
+        SELECT 1 FROM BL_ConsultaGlobalSys c WHERE c.BlMasterId = m.Id
+      )
+
+      UNION ALL
+
+      SELECT 'House' AS tipo, h.Id AS blId
+      FROM BL_House h
+      WHERE NOT EXISTS (
+        SELECT 1 FROM BL_ConsultaGlobalSys c WHERE c.BlHouseId = h.Id
+      )
+    `;
+
+    return rows.map((row) => ({
+      tipo: row.tipo as BlDocumentType,
+      blId: row.blId,
     }));
   }
 

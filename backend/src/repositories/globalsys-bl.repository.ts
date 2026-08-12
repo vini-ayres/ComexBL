@@ -31,7 +31,10 @@ export class GlobalSysBlRepository {
     request.input('numeroBL', numeroBl);
 
     const result = await request.query<GlobalSysCargoRecord>(
-      'SELECT * FROM TB_CARGA_BL WHERE NR_BL = @numeroBL',
+      `SELECT c.*
+       FROM TB_CARGA_BL c
+       INNER JOIN TB_BL b ON b.ID_BL = c.ID_BL
+       WHERE b.NR_BL = @numeroBL`,
     );
 
     return result.recordset ?? [];
@@ -43,7 +46,10 @@ export class GlobalSysBlRepository {
     request.input('numeroBL', numeroBl);
 
     const result = await request.query<GlobalSysNcmRecord>(
-      'SELECT * FROM TB_BL_NCM WHERE NR_BL = @numeroBL',
+      `SELECT n.*
+       FROM TB_BL_NCM n
+       INNER JOIN TB_BL b ON b.ID_BL = n.ID_BL
+       WHERE b.NR_BL = @numeroBL`,
     );
 
     return result.recordset ?? [];

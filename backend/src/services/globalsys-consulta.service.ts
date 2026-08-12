@@ -1,4 +1,5 @@
 import { isBlVersion, type BlVersion } from '../constants/bl-version.constants.js';
+import { logger } from '../config/logger.js';
 import { BadRequestError, NotFoundError } from '../errors/AppError.js';
 import {
   mapBlNaoEncontradoDetail,
@@ -36,6 +37,8 @@ export class GlobalSysConsultaService {
   async listNotFound(
     pagination: PaginationQuery,
   ): Promise<BlNaoEncontradoListResponse> {
+    await this.consultPendingDocuments();
+
     const rows = await this.localRepository.findQueueRows();
     const { skip, take } = getSkipTake(pagination);
     const pageRows = rows.slice(skip, skip + take);
@@ -88,6 +91,39 @@ export class GlobalSysConsultaService {
     }
 
     return this.executarConsulta(tipoParam, blId);
+  }
+
+  /**
+   * BLs ingeridos pelo OCR (n8n) ainda sem tentativa no GlobalSys.
+   * Consulta automaticamente ao abrir a fila de BL não encontrado.
+   */
+  private async consultPendingDocuments(): Promise<void> {
+    const pending = await this.localRepository.findDocumentsPendingConsulta();
+
+    if (pending.length === 0) {
+      return;
+    }
+
+    logger.info(
+      `Consultando GlobalSys para ${pending.length} BL(s) sem tentativa registrada`,
+    );
+
+    for (const document of pending) {
+      try {
+        const result = await this.executarConsulta(document.tipo, document.blId);
+
+        logger.info(
+          `GlobalSys ${document.tipo} ${document.blId} (${result.numeroBl}): found=${result.found}, status=${result.workflowStatus}`,
+        );
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : 'Erro desconhecido';
+
+        logger.error(
+          `Falha ao consultar GlobalSys para ${document.tipo} ${document.blId}: ${message}`,
+        );
+      }
+    }
   }
 
   private async executarConsulta(

@@ -1,3 +1,4 @@
+import { BL_VERSION } from '../constants/bl-version.constants.js';
 import { BadRequestError, NotFoundError } from '../errors/AppError.js';
 import {
   hasCamposPendentes,
@@ -14,6 +15,7 @@ import type {
   SaveApoioHumanoRequestDto,
   SaveApoioHumanoResponseDto,
 } from '../types/apoio-humano.types.js';
+import type { UpdateWorkflowInput } from '../types/bl-domain.types.js';
 import type { PaginationQuery } from '../types/bl.types.js';
 import { getSkipTake } from '../utils/pagination.js';
 import type { WorkflowService } from './workflow.service.js';
@@ -92,15 +94,6 @@ export class ApoioHumanoService {
       const confianca = Math.min(
         ...payload.campos.map((campo) => campo.confianca),
       );
-      const workflowData = {
-        status: pendentes > 0 ? 'apoio_humano' : 'processando',
-        pendencia:
-          pendentes > 0
-            ? `${pendentes} campo(s) aguardando revisão humana`
-            : 'Revisão humana concluída',
-        responsavelUserId: user.Id,
-        confianca,
-      };
 
       const result = await prisma.$transaction(async (tx) => {
         const saveResult = await this.repository.saveCampos(
@@ -121,7 +114,12 @@ export class ApoioHumanoService {
 
           await this.workflowService.updateWorkflowForMasterDocument(
             master,
-            workflowData,
+            this.buildWorkflowAfterApoioHumano(
+              master.BlVersion,
+              pendentes,
+              confianca,
+              user.Id,
+            ),
             tx,
           );
         } else {
@@ -133,7 +131,12 @@ export class ApoioHumanoService {
 
           await this.workflowService.updateWorkflowForHouseDocument(
             house,
-            workflowData,
+            this.buildWorkflowAfterApoioHumano(
+              house.BlVersion,
+              pendentes,
+              confianca,
+              user.Id,
+            ),
             tx,
           );
         }
@@ -200,6 +203,37 @@ export class ApoioHumanoService {
     }
 
     return pendingEntries;
+  }
+
+  /**
+   * DRAFT: após revisão humana completa, o processo encerra (sem Divergências).
+   * FINAL: segue para comparação e Divergências antes de finalizar.
+   */
+  private buildWorkflowAfterApoioHumano(
+    blVersion: string,
+    pendentes: number,
+    confianca: number,
+    responsavelUserId: number,
+  ): UpdateWorkflowInput {
+    if (pendentes > 0) {
+      return {
+        status: 'apoio_humano',
+        pendencia: `${pendentes} campo(s) aguardando revisão humana`,
+        responsavelUserId,
+        confianca,
+      };
+    }
+
+    const isDraft = blVersion === BL_VERSION.DRAFT;
+
+    return {
+      status: isDraft ? 'finalizado' : 'processando',
+      pendencia: isDraft
+        ? 'Revisão humana concluída — processo finalizado'
+        : 'Revisão humana concluída',
+      responsavelUserId,
+      confianca,
+    };
   }
 
   private parseTipo(value: string): 'Master' | 'House' {

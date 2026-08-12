@@ -145,9 +145,9 @@ export class GlobalSysService {
     const detalhe = consulta.found
       ? 'BL localizado no GlobalSys'
       : 'Não encontrado no GlobalSys';
-    const workflowStatus = consulta.found ? 'processando' : 'nao_encontrado';
+    const workflowStatus = consulta.found ? 'apoio_humano' : 'nao_encontrado';
     const pendencia = consulta.found
-      ? 'BL localizado no GlobalSys'
+      ? 'Campos OCR aguardando revisão humana'
       : 'BL não localizado no GlobalSys';
 
     const workflowData = {

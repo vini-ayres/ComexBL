@@ -30,8 +30,10 @@ import { BlFinalView } from "@/components/bl-final/BlFinalView"
 import { ProcessoTimeline } from "@/components/processo/ProcessoTimeline"
 import { WorkflowSummaryCard } from "@/components/workflow/WorkflowSummaryCard"
 import { ApiStatePanel } from "@/components/shared/ApiStatePanel"
+import { OperationalEmptyQueueCard } from "@/components/shared/OperationalEmptyQueueCard"
 import { TableSkeleton } from "@/components/shared/LoadingSkeleton"
-import { useDocumentParams } from "@/hooks/useDocumentParams"
+import { buildDocumentSearchParams, useDocumentParams } from "@/hooks/useDocumentParams"
+import { fetchDashboard } from "@/lib/api/dashboard"
 import { useAuth } from "@/hooks/useAuth"
 import { fetchBlFinal } from "@/lib/api/bl-final"
 import type { BlFinalResponseDto } from "@/lib/api/types"
@@ -91,8 +93,8 @@ function mapCamposToRows(campos: DivergenciaCampoDto[]): DisplayRow[] {
   return campos.map((campo) => ({
     key: campo.campoKey,
     label: campo.campoLabel,
-    valorBlFinal: campo.valorBlFinal,
-    valorGlobalSys: campo.valorGlobalSys,
+    valorBlFinal: campo.valorBlFinal || campo.valorDraft || campo.valorFinal || "",
+    valorGlobalSys: campo.valorGlobalSys || "",
     status: campo.status,
     categoria: campo.categoria,
     pending: isPendingCampoStatus(campo.status),
@@ -203,6 +205,51 @@ export default function Divergencia() {
   const [timelineError, setTimelineError] = useState<string | null>(null)
   const [blFinalLoading, setBlFinalLoading] = useState(false)
   const [blFinalError, setBlFinalError] = useState<string | null>(null)
+  const [resolvingDefaultDocument, setResolvingDefaultDocument] = useState(!isValid)
+
+  useEffect(() => {
+    if (isValid) {
+      setResolvingDefaultDocument(false)
+      return
+    }
+
+    let cancelled = false
+
+    async function resolveDefaultDocument() {
+      setResolvingDefaultDocument(true)
+
+      try {
+        const result = await fetchDashboard({
+          status: "divergencia",
+          page: 1,
+          pageSize: 1,
+        })
+
+        if (cancelled) return
+
+        const first = result.items.data[0]
+        if (first) {
+          const params = buildDocumentSearchParams({
+            tipo: first.tipo,
+            documentNumber: first.numeroBl,
+          })
+          navigate(`/divergencia?${params}`, { replace: true })
+        }
+      } catch {
+        // Mantém estado vazio abaixo.
+      } finally {
+        if (!cancelled) {
+          setResolvingDefaultDocument(false)
+        }
+      }
+    }
+
+    void resolveDefaultDocument()
+
+    return () => {
+      cancelled = true
+    }
+  }, [isValid, navigate])
 
   const refreshWorkflow = useCallback(async () => {
     if (!isValid) return
@@ -400,13 +447,23 @@ export default function Divergencia() {
   }, [divergencia, resolvedCampos])
 
   if (!isValid) {
+    if (resolvingDefaultDocument) {
+      return (
+        <div className="space-y-6">
+          <div className="flex items-center gap-3">
+            <Loader2 className="h-6 w-6 animate-spin text-primary-600" />
+            <p className="text-sm text-muted-foreground">Localizando BL com divergência...</p>
+          </div>
+          <TableSkeleton rows={8} />
+        </div>
+      )
+    }
+
     return (
-      <ApiStatePanel
-        variant="empty"
-        title="Nenhum documento selecionado"
-        description="Selecione um BL com divergência no dashboard para abrir esta tela."
+      <OperationalEmptyQueueCard
+        title="Nenhum BL pendente de divergência"
+        description="Todos os documentos foram validados ou não possuem divergências pendentes em relação ao GlobalSys."
         onRetry={() => navigate("/")}
-        retryLabel="Ir para o Dashboard"
       />
     )
   }

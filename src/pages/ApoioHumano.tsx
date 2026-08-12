@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Progress } from "@/components/ui/progress"
 import { DocumentViewer } from "@/components/shared/DocumentViewer"
+import { OperationalEmptyQueueCard } from "@/components/shared/OperationalEmptyQueueCard"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { fetchApoioHumano, saveApoioHumanoCampos } from "@/lib/api/apoio-humano"
 import type { ApoioHumanoDetailDto, CampoExtraidoDto, HistoricoAlteracaoDto } from "@/lib/api/types"
@@ -149,23 +150,22 @@ export default function ApoioHumano() {
 
   if (error && !data) {
     const isEmptyQueue = error.includes("Nenhum BL pendente")
+    if (isEmptyQueue) {
+      return (
+        <OperationalEmptyQueueCard
+          title="Nenhum BL pendente de apoio humano"
+          description="Todos os documentos foram validados ou não possuem campos pendentes."
+        />
+      )
+    }
+
     return (
       <div className="rounded-xl border border-border bg-white px-4 py-12 text-center">
-        {isEmptyQueue ? (
-          <>
-            <CheckCircle2 className="h-10 w-10 text-success-600 mx-auto mb-3" />
-            <p className="text-sm font-medium text-primary-900">Nenhum BL pendente de apoio humano</p>
-            <p className="text-xs text-muted-foreground mt-1">Todos os documentos foram validados ou não possuem campos pendentes.</p>
-          </>
-        ) : (
-          <>
-            <AlertCircle className="h-8 w-8 text-danger-600 mx-auto mb-3" />
-            <p className="text-sm text-danger-700">{error}</p>
-            <Button variant="outline" size="sm" className="mt-4" onClick={() => void loadBl(page)}>
-              Tentar novamente
-            </Button>
-          </>
-        )}
+        <AlertCircle className="h-8 w-8 text-danger-600 mx-auto mb-3" />
+        <p className="text-sm text-danger-700">{error}</p>
+        <Button variant="outline" size="sm" className="mt-4" onClick={() => void loadBl(page)}>
+          Tentar novamente
+        </Button>
       </div>
     )
   }

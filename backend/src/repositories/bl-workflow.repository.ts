@@ -1,9 +1,12 @@
-import type { BlWorkflow, Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
+import type { BlWorkflow } from '@prisma/client';
 import { prisma } from '../prisma/client.js';
 import type {
   UpdateWorkflowInput,
   WorkflowUpsertParams,
 } from '../types/bl-domain.types.js';
+
+const WORKFLOW_PENDENCIA_MAX_LENGTH = 500;
 
 export class BlWorkflowRepository {
   private client(tx?: Prisma.TransactionClient): Prisma.TransactionClient {
@@ -14,7 +17,7 @@ export class BlWorkflowRepository {
     blMasterId: number,
     tx?: Prisma.TransactionClient,
   ): Promise<BlWorkflow | null> {
-    return this.client(tx).blWorkflow.findUnique({
+    return this.client(tx).blWorkflow.findFirst({
       where: { BlMasterId: blMasterId },
     });
   }
@@ -23,7 +26,7 @@ export class BlWorkflowRepository {
     blHouseId: number,
     tx?: Prisma.TransactionClient,
   ): Promise<BlWorkflow | null> {
-    return this.client(tx).blWorkflow.findUnique({
+    return this.client(tx).blWorkflow.findFirst({
       where: { BlHouseId: blHouseId },
     });
   }
@@ -42,12 +45,7 @@ export class BlWorkflowRepository {
   ): Promise<BlWorkflow> {
     return this.client(tx).blWorkflow.update({
       where: { Id: id },
-      data: {
-        Status: data.status,
-        Pendencia: data.pendencia,
-        ResponsavelUserId: data.responsavelUserId,
-        Confianca: data.confianca,
-      },
+      data: this.buildUpdateData(data),
     });
   }
 
@@ -55,30 +53,18 @@ export class BlWorkflowRepository {
     params: WorkflowUpsertParams,
     tx?: Prisma.TransactionClient,
   ): Promise<BlWorkflow> {
-    const workflowData = {
-      TipoBl: params.tipoBl,
-      Status: params.data.status,
-      Pendencia: params.data.pendencia ?? null,
-      ResponsavelUserId: params.data.responsavelUserId ?? null,
-      Confianca: params.data.confianca ?? null,
-    };
+    const workflowData = this.buildCreateInput(params);
 
     if (params.tipoBl === 'Master') {
       if (!params.blMasterId) {
         throw new Error('blMasterId é obrigatório para workflow de Master');
       }
 
-      const existing = await this.findByMasterId(params.blMasterId, tx);
-
-      if (existing) {
-        return this.update(existing.Id, params.data, tx);
-      }
-
-      return this.create(
-        {
-          master: { connect: { Id: params.blMasterId } },
-          ...workflowData,
-        },
+      return this.upsertMasterWorkflow(
+        params.blMasterId,
+        params.documentNumber,
+        workflowData,
+        params.data,
         tx,
       );
     }
@@ -87,19 +73,257 @@ export class BlWorkflowRepository {
       throw new Error('blHouseId é obrigatório para workflow de House');
     }
 
-    const existing = await this.findByHouseId(params.blHouseId, tx);
-
-    if (existing) {
-      return this.update(existing.Id, params.data, tx);
-    }
-
-    return this.create(
-      {
-        house: { connect: { Id: params.blHouseId } },
-        ...workflowData,
-      },
+    return this.upsertHouseWorkflow(
+      params.blHouseId,
+      params.documentNumber,
+      workflowData,
+      params.data,
       tx,
     );
+  }
+
+  private async upsertMasterWorkflow(
+    blMasterId: number,
+    documentNumber: string | undefined,
+    workflowData: Omit<Prisma.BlWorkflowCreateInput, 'master' | 'house'>,
+    data: UpdateWorkflowInput,
+    tx?: Prisma.TransactionClient,
+  ): Promise<BlWorkflow> {
+    const existing = await this.resolveExistingMasterWorkflow(
+      blMasterId,
+      documentNumber,
+      tx,
+    );
+
+    if (existing) {
+      return this.reconcileMasterWorkflow(existing, blMasterId, data, tx);
+    }
+
+    try {
+      return await this.create(
+        {
+          master: { connect: { Id: blMasterId } },
+          ...workflowData,
+        },
+        tx,
+      );
+    } catch (error) {
+      if (!this.isUniqueConstraintError(error)) {
+        throw error;
+      }
+
+      const concurrent = await this.resolveExistingMasterWorkflow(
+        blMasterId,
+        documentNumber,
+        tx,
+      );
+
+      if (!concurrent) {
+        throw error;
+      }
+
+      return this.reconcileMasterWorkflow(concurrent, blMasterId, data, tx);
+    }
+  }
+
+  private async upsertHouseWorkflow(
+    blHouseId: number,
+    documentNumber: string | undefined,
+    workflowData: Omit<Prisma.BlWorkflowCreateInput, 'master' | 'house'>,
+    data: UpdateWorkflowInput,
+    tx?: Prisma.TransactionClient,
+  ): Promise<BlWorkflow> {
+    const existing = await this.resolveExistingHouseWorkflow(
+      blHouseId,
+      documentNumber,
+      tx,
+    );
+
+    if (existing) {
+      return this.reconcileHouseWorkflow(existing, blHouseId, data, tx);
+    }
+
+    try {
+      return await this.create(
+        {
+          house: { connect: { Id: blHouseId } },
+          ...workflowData,
+        },
+        tx,
+      );
+    } catch (error) {
+      if (!this.isUniqueConstraintError(error)) {
+        throw error;
+      }
+
+      const concurrent = await this.resolveExistingHouseWorkflow(
+        blHouseId,
+        documentNumber,
+        tx,
+      );
+
+      if (!concurrent) {
+        throw error;
+      }
+
+      return this.reconcileHouseWorkflow(concurrent, blHouseId, data, tx);
+    }
+  }
+
+  private async resolveExistingMasterWorkflow(
+    blMasterId: number,
+    documentNumber: string | undefined,
+    tx?: Prisma.TransactionClient,
+  ): Promise<BlWorkflow | null> {
+    const client = this.client(tx);
+
+    const byTargetId = await client.blWorkflow.findFirst({
+      where: { BlMasterId: blMasterId },
+    });
+
+    if (byTargetId) {
+      return byTargetId;
+    }
+
+    if (!documentNumber) {
+      return null;
+    }
+
+    return client.blWorkflow.findFirst({
+      where: {
+        master: { MasterNumber: documentNumber },
+      },
+    });
+  }
+
+  private async resolveExistingHouseWorkflow(
+    blHouseId: number,
+    documentNumber: string | undefined,
+    tx?: Prisma.TransactionClient,
+  ): Promise<BlWorkflow | null> {
+    const client = this.client(tx);
+
+    const byTargetId = await client.blWorkflow.findFirst({
+      where: { BlHouseId: blHouseId },
+    });
+
+    if (byTargetId) {
+      return byTargetId;
+    }
+
+    if (!documentNumber) {
+      return null;
+    }
+
+    return client.blWorkflow.findFirst({
+      where: {
+        house: { HouseNumber: documentNumber },
+      },
+    });
+  }
+
+  private async reconcileMasterWorkflow(
+    existing: BlWorkflow,
+    targetBlMasterId: number,
+    data: UpdateWorkflowInput,
+    tx?: Prisma.TransactionClient,
+  ): Promise<BlWorkflow> {
+    const client = this.client(tx);
+    const updateData = this.buildUpdateData(data);
+
+    if (existing.BlMasterId === targetBlMasterId) {
+      return client.blWorkflow.update({
+        where: { Id: existing.Id },
+        data: updateData,
+      });
+    }
+
+    return client.blWorkflow.update({
+      where: { Id: existing.Id },
+      data: {
+        ...updateData,
+        master: { connect: { Id: targetBlMasterId } },
+      },
+    });
+  }
+
+  private async reconcileHouseWorkflow(
+    existing: BlWorkflow,
+    targetBlHouseId: number,
+    data: UpdateWorkflowInput,
+    tx?: Prisma.TransactionClient,
+  ): Promise<BlWorkflow> {
+    const client = this.client(tx);
+    const updateData = this.buildUpdateData(data);
+
+    if (existing.BlHouseId === targetBlHouseId) {
+      return client.blWorkflow.update({
+        where: { Id: existing.Id },
+        data: updateData,
+      });
+    }
+
+    return client.blWorkflow.update({
+      where: { Id: existing.Id },
+      data: {
+        ...updateData,
+        house: { connect: { Id: targetBlHouseId } },
+      },
+    });
+  }
+
+  private buildUpdateData(
+    data: UpdateWorkflowInput,
+  ): Prisma.BlWorkflowUpdateInput {
+    const updateData: Prisma.BlWorkflowUpdateInput = {
+      Status: data.status,
+      Pendencia: this.truncatePendencia(data.pendencia),
+      Confianca: data.confianca,
+    };
+
+    if (data.responsavelUserId !== undefined) {
+      updateData.responsavel =
+        data.responsavelUserId != null
+          ? { connect: { Id: data.responsavelUserId } }
+          : { disconnect: true };
+    }
+
+    return updateData;
+  }
+
+  private buildCreateInput(
+    params: WorkflowUpsertParams,
+  ): Omit<Prisma.BlWorkflowCreateInput, 'master' | 'house'> {
+    const responsavelUserId = params.data.responsavelUserId;
+
+    return {
+      TipoBl: params.tipoBl,
+      Status: params.data.status,
+      Pendencia: this.truncatePendencia(params.data.pendencia ?? null),
+      Confianca: params.data.confianca ?? null,
+      ...(responsavelUserId != null
+        ? { responsavel: { connect: { Id: responsavelUserId } } }
+        : {}),
+    };
+  }
+
+  private isUniqueConstraintError(error: unknown): boolean {
+    return (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === 'P2002'
+    );
+  }
+
+  private truncatePendencia(value: string | null | undefined): string | null {
+    if (value == null) {
+      return null;
+    }
+
+    if (value.length <= WORKFLOW_PENDENCIA_MAX_LENGTH) {
+      return value;
+    }
+
+    return `${value.slice(0, WORKFLOW_PENDENCIA_MAX_LENGTH - 1)}…`;
   }
 }
 

@@ -21,8 +21,10 @@ import { ProcessoTimeline } from "@/components/processo/ProcessoTimeline"
 import { WorkflowSummaryCard } from "@/components/workflow/WorkflowSummaryCard"
 import { BlFinalView } from "@/components/bl-final/BlFinalView"
 import { ApiStatePanel } from "@/components/shared/ApiStatePanel"
+import { OperationalEmptyQueueCard } from "@/components/shared/OperationalEmptyQueueCard"
 import { CardSkeleton } from "@/components/shared/LoadingSkeleton"
-import { useDocumentParams } from "@/hooks/useDocumentParams"
+import { buildDocumentSearchParams, useDocumentParams } from "@/hooks/useDocumentParams"
+import { fetchDashboard } from "@/lib/api/dashboard"
 import { useNavigate } from "react-router-dom"
 
 export default function ProcessoFinalizado() {
@@ -35,6 +37,51 @@ export default function ProcessoFinalizado() {
 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [resolvingDefaultDocument, setResolvingDefaultDocument] = useState(!isValid)
+
+  useEffect(() => {
+    if (isValid) {
+      setResolvingDefaultDocument(false)
+      return
+    }
+
+    let cancelled = false
+
+    async function resolveDefaultDocument() {
+      setResolvingDefaultDocument(true)
+
+      try {
+        const result = await fetchDashboard({
+          status: "finalizado",
+          page: 1,
+          pageSize: 1,
+        })
+
+        if (cancelled) return
+
+        const first = result.items.data[0]
+        if (first) {
+          const params = buildDocumentSearchParams({
+            tipo: first.tipo,
+            documentNumber: first.numeroBl,
+          })
+          navigate(`/processo-finalizado?${params}`, { replace: true })
+        }
+      } catch {
+        // Mantém estado vazio abaixo.
+      } finally {
+        if (!cancelled) {
+          setResolvingDefaultDocument(false)
+        }
+      }
+    }
+
+    void resolveDefaultDocument()
+
+    return () => {
+      cancelled = true
+    }
+  }, [isValid, navigate])
 
   const loadData = useCallback(async () => {
     if (!isValid) {
@@ -86,13 +133,23 @@ export default function ProcessoFinalizado() {
   }, [loadData])
 
   if (!isValid) {
+    if (resolvingDefaultDocument) {
+      return (
+        <div className="space-y-6">
+          <CardSkeleton />
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <CardSkeleton />
+            <div className="lg:col-span-2"><CardSkeleton /></div>
+          </div>
+        </div>
+      )
+    }
+
     return (
-      <ApiStatePanel
-        variant="empty"
-        title="Nenhum documento selecionado"
-        description="Selecione um BL finalizado no dashboard para visualizar o processo."
+      <OperationalEmptyQueueCard
+        title="Nenhum BL com processo finalizado"
+        description="Todos os processos em andamento ainda não foram concluídos ou não há documentos finalizados disponíveis."
         onRetry={() => navigate("/")}
-        retryLabel="Ir para o Dashboard"
       />
     )
   }

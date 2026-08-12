@@ -19,14 +19,14 @@ export class ApoioHumanoRepository {
         SELECT 'Master' AS tipo, m.Id
         FROM BL_Master m
         LEFT JOIN BL_Workflow w ON w.BlMasterId = m.Id
-        WHERE w.Id IS NULL OR w.Status = 'apoio_humano'
+        WHERE w.Id IS NULL OR w.Status IN ('apoio_humano', 'processando')
 
         UNION ALL
 
         SELECT 'House' AS tipo, h.Id
         FROM BL_House h
         LEFT JOIN BL_Workflow w ON w.BlHouseId = h.Id
-        WHERE w.Id IS NULL OR w.Status = 'apoio_humano'
+        WHERE w.Id IS NULL OR w.Status IN ('apoio_humano', 'processando')
       ) q
       ORDER BY Id
     `;

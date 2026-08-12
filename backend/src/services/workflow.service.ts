@@ -78,11 +78,18 @@ export class WorkflowService {
     documentNumber: string,
     blVersion: BlVersion,
   ): Promise<BlWorkflowContext | null> {
-    if (documentType === 'Master') {
-      return this.getWorkflowByMasterNumberAndVersion(documentNumber, blVersion);
+    const context =
+      documentType === 'Master'
+        ? await this.getWorkflowByMasterNumberAndVersion(documentNumber, blVersion)
+        : await this.getWorkflowByHouseNumberAndVersion(documentNumber, blVersion);
+
+    if (context || blVersion !== BL_VERSION.FINAL) {
+      return context;
     }
 
-    return this.getWorkflowByHouseNumberAndVersion(documentNumber, blVersion);
+    return documentType === 'Master'
+      ? this.getWorkflowByMasterNumberAndVersion(documentNumber, BL_VERSION.DRAFT)
+      : this.getWorkflowByHouseNumberAndVersion(documentNumber, BL_VERSION.DRAFT);
   }
 
   async updateWorkflowByMasterNumberAndVersion(
@@ -106,6 +113,7 @@ export class WorkflowService {
       {
         tipoBl: 'Master',
         blMasterId: master.Id,
+        documentNumber: masterNumber,
         data,
       },
       tx,
@@ -133,6 +141,7 @@ export class WorkflowService {
       {
         tipoBl: 'House',
         blHouseId: house.Id,
+        documentNumber: houseNumber,
         data,
       },
       tx,
@@ -386,7 +395,7 @@ export class WorkflowService {
 
   assertValidTransition(currentStatus: string, nextStatus: string): void {
     const allowed: Record<string, string[]> = {
-      apoio_humano: ['processando', 'divergencia', 'nao_encontrado'],
+      apoio_humano: ['processando', 'finalizado', 'divergencia', 'nao_encontrado'],
       processando: ['finalizado', 'divergencia', 'nao_encontrado'],
       divergencia: ['processando', 'finalizado'],
       nao_encontrado: ['processando', 'apoio_humano'],

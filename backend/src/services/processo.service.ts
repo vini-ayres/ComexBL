@@ -108,7 +108,7 @@ export class ProcessoService {
     return mapProcessoTimelineResponse({
       documentType,
       documentNumber,
-      blVersion,
+      blVersion: documentContext.blVersion,
       workflow,
       persistedEtapas,
       dynamicEvents,
@@ -120,38 +120,38 @@ export class ProcessoService {
     documentNumber: string,
     blVersion: BlVersion,
   ) {
-    if (documentType === 'Master') {
-      const master = await blMasterRepository.findByMasterNumberAndVersion(
-        documentNumber,
-        blVersion,
-      );
-
-      if (!master) {
-        throw new NotFoundError(
-          `Master ${documentNumber} (${blVersion}) não encontrado`,
-        );
-      }
-
-      return {
-        recordId: master.Id,
-        createdAt: master.OnboardDate ?? new Date(),
-      };
-    }
-
-    const house = await blHouseRepository.findByHouseNumberAndVersion(
+    const resolved = await this.findVersionRecord(
+      documentType,
       documentNumber,
       blVersion,
     );
 
-    if (!house) {
+    if (!resolved && blVersion === BL_VERSION.FINAL) {
+      const draftRecord = await this.findVersionRecord(
+        documentType,
+        documentNumber,
+        BL_VERSION.DRAFT,
+      );
+
+      if (draftRecord) {
+        return {
+          recordId: draftRecord.Id,
+          createdAt: this.resolveDocumentDate(draftRecord, new Date()),
+          blVersion: BL_VERSION.DRAFT,
+        };
+      }
+    }
+
+    if (!resolved) {
       throw new NotFoundError(
-        `House ${documentNumber} (${blVersion}) não encontrado`,
+        `${documentType} ${documentNumber} (${blVersion}) não encontrado`,
       );
     }
 
     return {
-      recordId: house.Id,
-      createdAt: house.IssueDate ?? new Date(),
+      recordId: resolved.Id,
+      createdAt: this.resolveDocumentDate(resolved, new Date()),
+      blVersion,
     };
   }
 

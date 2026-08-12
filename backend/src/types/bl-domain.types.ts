@@ -53,6 +53,8 @@ export interface WorkflowUpsertParams {
   tipoBl: BlDocumentType;
   blMasterId?: number | null;
   blHouseId?: number | null;
+  /** MasterNumber ou HouseNumber — permite localizar workflow de outra versão (DRAFT/FINAL). */
+  documentNumber?: string;
   data: UpdateWorkflowInput;
 }
 
