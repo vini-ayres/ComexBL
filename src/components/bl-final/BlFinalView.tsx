@@ -131,7 +131,7 @@ export function BlFinalView({ data, loading, error, onRetry }: BlFinalViewProps)
                   <p className="font-semibold text-primary-900 mb-2">{house.houseNumber}</p>
                   <div className="flex flex-wrap gap-2">
                     {house.ncms.map((ncm) => (
-                      <Badge key={`${house.houseNumber}-${ncm}`} variant="secondary">{ncm}</Badge>
+                      <Badge key={`${house.houseNumber}-${ncm}`} variant="neutral">{ncm}</Badge>
                     ))}
                   </div>
                 </div>

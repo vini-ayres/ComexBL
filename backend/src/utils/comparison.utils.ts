@@ -59,6 +59,40 @@ export function buildCargoLogicalKey(cargo: CargoLogicalKeySource): string {
   return `cargo:id:${cargo.Id}`;
 }
 
+/** Título legível para exibição de um item de cargo (Apoio Humano, divergências, etc.). */
+export function formatCargoDisplayTitle(
+  cargo: CargoLogicalKeySource,
+  index: number,
+): string {
+  const hazard = normalizeComparisonValue(cargo.HazardClass);
+  const un = normalizeComparisonValue(cargo.UNNumber);
+  const brand = normalizeComparisonValue(cargo.Brand);
+  const counterMark = normalizeComparisonValue(cargo.CounterMark);
+  const cargoType = normalizeComparisonValue(cargo.CargoType);
+  const ordinal = index + 1;
+
+  if (hazard || un) {
+    const hazmatParts = [
+      hazard ? `Classe ${hazard}` : null,
+      un ? `UN ${un}` : null,
+    ].filter(Boolean);
+
+    return `Cargo ${ordinal} · Perigoso · ${hazmatParts.join(' · ')}`;
+  }
+
+  const identityParts = [
+    brand ? `Marca ${brand}` : null,
+    counterMark ? `Contramarca ${counterMark}` : null,
+    cargoType,
+  ].filter(Boolean);
+
+  if (identityParts.length > 0) {
+    return `Cargo ${ordinal} · ${identityParts.join(' · ')}`;
+  }
+
+  return `Cargo ${ordinal}`;
+}
+
 export function normalizeNcmCode(code: string): string {
   return code.trim().toUpperCase();
 }

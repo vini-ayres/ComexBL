@@ -32,6 +32,19 @@ export class BlMasterRepository {
     return this.findByMasterNumberAndVersion(masterNumber, BL_VERSION.FINAL);
   }
 
+  async findByContainerNumberAndVersion(
+    containerNumber: string,
+    blVersion: BlVersion,
+  ): Promise<BlMaster | null> {
+    return prisma.blMaster.findFirst({
+      where: {
+        ContainerNumber: containerNumber.trim(),
+        BlVersion: blVersion,
+      },
+      orderBy: { Id: 'asc' },
+    });
+  }
+
   async findWithHousesByMasterNumberAndVersion(
     masterNumber: string,
     blVersion: BlVersion,

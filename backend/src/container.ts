@@ -38,11 +38,31 @@ import { GlobalSysConsultaService } from './services/globalsys-consulta.service.
 
 import { GlobalSysService } from './services/globalsys.service.js';
 
+import { GlobalSysXmlDispatchService } from './services/globalsys-xml-dispatch.service.js';
+
 import { processoService } from './services/processo.service.js';
 
 import { WorkflowService } from './services/workflow.service.js';
 
 import { relationshipValidator } from './validators/relationship-validator.js';
+
+import { env } from './config/env.js';
+
+
+
+export const globalSysXmlDispatchService = new GlobalSysXmlDispatchService(
+
+  blMasterRepository,
+
+  blHouseRepository,
+
+  blWorkflowRepository,
+
+  relationshipValidator,
+
+  env.n8n.webhookEnviarXmlGlobalsysUrl,
+
+);
 
 
 
@@ -53,6 +73,8 @@ export const workflowService = new WorkflowService(
   blMasterRepository,
 
   blHouseRepository,
+
+  globalSysXmlDispatchService,
 
 );
 
@@ -143,6 +165,8 @@ export const apoioHumanoService = new ApoioHumanoService(
   apoioHumanoRepository,
 
   workflowService,
+
+  divergenciaService,
 
 );
 

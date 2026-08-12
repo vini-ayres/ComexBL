@@ -55,7 +55,7 @@ export function WorkflowSummaryCard({
       <CardContent className="space-y-3 text-sm">
         <div className="flex items-center justify-between gap-2">
           <span className="text-muted-foreground">Status</span>
-          <Badge variant="secondary">{workflow.status}</Badge>
+          <Badge variant="neutral">{workflow.status}</Badge>
         </div>
         <div className="flex items-start justify-between gap-2">
           <span className="text-muted-foreground flex items-center gap-1.5 shrink-0">

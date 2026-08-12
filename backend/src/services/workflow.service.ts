@@ -1,9 +1,11 @@
 import type { BlHouse, BlMaster, BlWorkflow, Prisma } from '@prisma/client';
 import { BL_VERSION, isBlVersion, type BlVersion } from '../constants/bl-version.constants.js';
+import type { ComparisonResult } from '../domain/comparison/index.js';
 import { BadRequestError, NotFoundError } from '../errors/AppError.js';
 import { BlHouseRepository } from '../repositories/bl-house.repository.js';
 import { BlMasterRepository } from '../repositories/bl-master.repository.js';
 import { BlWorkflowRepository } from '../repositories/bl-workflow.repository.js';
+import type { GlobalSysXmlDispatchService } from './globalsys-xml-dispatch.service.js';
 import type {
   BlDocumentType,
   BlFinalGlobalSysComparisonResult,
@@ -11,12 +13,14 @@ import type {
   DraftFinalComparisonResult,
   UpdateWorkflowInput,
 } from '../types/bl-domain.types.js';
+import { runAfterCommit } from '../utils/post-commit.js';
 
 export class WorkflowService {
   constructor(
     private readonly workflowRepository: BlWorkflowRepository,
     private readonly masterRepository: BlMasterRepository,
     private readonly houseRepository: BlHouseRepository,
+    private readonly xmlDispatchService?: GlobalSysXmlDispatchService,
   ) {}
 
   async getWorkflowByMasterNumberAndVersion(
@@ -109,7 +113,7 @@ export class WorkflowService {
       );
     }
 
-    return this.workflowRepository.upsert(
+    const workflow = await this.workflowRepository.upsert(
       {
         tipoBl: 'Master',
         blMasterId: master.Id,
@@ -118,6 +122,10 @@ export class WorkflowService {
       },
       tx,
     );
+
+    this.scheduleXmlDispatchIfFinalized('Master', masterNumber, blVersion, data, tx);
+
+    return workflow;
   }
 
   async updateWorkflowByHouseNumberAndVersion(
@@ -137,7 +145,7 @@ export class WorkflowService {
       );
     }
 
-    return this.workflowRepository.upsert(
+    const workflow = await this.workflowRepository.upsert(
       {
         tipoBl: 'House',
         blHouseId: house.Id,
@@ -146,6 +154,10 @@ export class WorkflowService {
       },
       tx,
     );
+
+    this.scheduleXmlDispatchIfFinalized('House', houseNumber, blVersion, data, tx);
+
+    return workflow;
   }
 
   async updateWorkflowForMasterDocument(
@@ -218,6 +230,70 @@ export class WorkflowService {
         status: 'processando',
         pendencia: 'FINAL recebido — aguardando comparação DRAFT/FINAL',
       },
+    );
+  }
+
+  /**
+   * Atualiza workflow conforme ComparisonResult do fluxo canônico (OCR × GlobalSys).
+   */
+  async applyCanonicalComparisonResult(
+    documentType: BlDocumentType,
+    documentNumber: string,
+    blVersion: BlVersion,
+    result: ComparisonResult,
+    tx?: Prisma.TransactionClient,
+  ): Promise<BlWorkflow> {
+    const workflowData = this.buildWorkflowFromCanonicalComparison(result);
+
+    if (documentType === 'Master') {
+      return this.updateWorkflowByMasterNumberAndVersion(
+        documentNumber,
+        blVersion,
+        workflowData,
+        tx,
+      );
+    }
+
+    return this.updateWorkflowByHouseNumberAndVersion(
+      documentNumber,
+      blVersion,
+      workflowData,
+      tx,
+    );
+  }
+
+  /**
+   * Atualiza workflow quando a comparação canônica falha antes de produzir ComparisonResult.
+   */
+  async applyCanonicalComparisonError(
+    documentType: BlDocumentType,
+    documentNumber: string,
+    blVersion: BlVersion,
+    message: string,
+    tx?: Prisma.TransactionClient,
+  ): Promise<BlWorkflow> {
+    const isGlobalSysMissing = message.includes('GlobalSys');
+    const workflowData: UpdateWorkflowInput = {
+      status: isGlobalSysMissing ? 'nao_encontrado' : 'processando',
+      pendencia: isGlobalSysMissing
+        ? message
+        : `Erro na comparação OCR × GlobalSys: ${message}`,
+    };
+
+    if (documentType === 'Master') {
+      return this.updateWorkflowByMasterNumberAndVersion(
+        documentNumber,
+        blVersion,
+        workflowData,
+        tx,
+      );
+    }
+
+    return this.updateWorkflowByHouseNumberAndVersion(
+      documentNumber,
+      blVersion,
+      workflowData,
+      tx,
     );
   }
 
@@ -323,6 +399,22 @@ export class WorkflowService {
     );
   }
 
+  private buildWorkflowFromCanonicalComparison(
+    result: ComparisonResult,
+  ): UpdateWorkflowInput {
+    if (result.equal || result.differenceCount === 0) {
+      return {
+        status: 'finalizado',
+        pendencia: 'Comparação OCR × GlobalSys concluída sem divergências',
+      };
+    }
+
+    return {
+      status: 'divergencia',
+      pendencia: `${result.differenceCount} divergência(s) entre OCR e GlobalSys — aguardando revisão`,
+    };
+  }
+
   private buildWorkflowFromGlobalSysComparison(
     comparison: Pick<
       BlFinalGlobalSysComparisonResult,
@@ -417,5 +509,29 @@ export class WorkflowService {
     }
 
     return value;
+  }
+
+  private scheduleXmlDispatchIfFinalized(
+    documentType: BlDocumentType,
+    documentNumber: string,
+    blVersion: BlVersion,
+    data: UpdateWorkflowInput,
+    tx?: Prisma.TransactionClient,
+  ): void {
+    if (data.status !== 'finalizado') {
+      return;
+    }
+
+    if (!this.xmlDispatchService) {
+      return;
+    }
+
+    runAfterCommit(Boolean(tx), () =>
+      this.xmlDispatchService!.handleWorkflowFinalized(
+        documentType,
+        documentNumber,
+        blVersion,
+      ),
+    );
   }
 }

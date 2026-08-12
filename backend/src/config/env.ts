@@ -136,6 +136,7 @@ const gsDbName = optionalEnv('GS_DB_NAME');
 const gsDbDomain = optionalEnv('GS_DB_DOMAIN');
 const gsDbUser = optionalEnv('GS_DB_USER');
 const gsDbPassword = optionalEnv('GS_DB_PASSWORD');
+const gsDbAuthMode = optionalEnv('GS_DB_AUTH_MODE');
 const gsDbEncrypt = parseBooleanEnv('GS_DB_ENCRYPT', false);
 const gsDbTrustServerCertificate = parseBooleanEnv(
   'GS_DB_TRUST_SERVER_CERTIFICATE',
@@ -149,6 +150,10 @@ const gsDbRequestTimeout = parsePositiveIntEnv('GS_DB_REQUEST_TIMEOUT', 30000);
 
 const globalsysEnabled = Boolean(
   gsDbServer && gsDbName && gsDbUser && gsDbPassword,
+);
+
+const n8nWebhookEnviarXmlGlobalsysUrl = optionalEnv(
+  'N8N_WEBHOOK_ENVIAR_XML_GLOBALSYS_URL',
 );
 
 export const env = {
@@ -173,12 +178,16 @@ export const env = {
     port: gsDbPort,
     name: gsDbName ?? '',
     domain: gsDbDomain,
+    authMode: gsDbAuthMode,
     user: gsDbUser ?? '',
     password: gsDbPassword ?? '',
     encrypt: gsDbEncrypt,
     trustServerCertificate: gsDbTrustServerCertificate,
     connectionTimeoutMs: gsDbConnectionTimeout,
     requestTimeoutMs: gsDbRequestTimeout,
+  },
+  n8n: {
+    webhookEnviarXmlGlobalsysUrl: n8nWebhookEnviarXmlGlobalsysUrl,
   },
 } as const;
 

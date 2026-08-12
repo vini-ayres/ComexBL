@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import {
   CheckCircle2, XCircle, Pencil, Send, GitCompareArrows,
-  History, Ship, Package, AlertTriangle, Boxes, Hash,
+  History, Ship, Package, Boxes, Hash,
   Loader2, RefreshCcw, Clock,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -19,7 +19,6 @@ import {
 import { fetchProcessoTimeline } from "@/lib/api/processo"
 import { fetchWorkflow } from "@/lib/api/workflow"
 import type {
-  DivergenciaCampoDto,
   DivergenciaCampoResolutionDetailDto,
   DivergenciaLatestDetailDto,
   DivergenciaResolutionStrategy,
@@ -27,8 +26,19 @@ import type {
   WorkflowSummaryDto,
 } from "@/lib/api/types"
 import { BlFinalView } from "@/components/bl-final/BlFinalView"
+import {
+  DivergenceIndexedTables,
+  DivergenceSectionTables,
+} from "@/components/divergencia/DivergenceFieldTables"
 import { ProcessoTimeline } from "@/components/processo/ProcessoTimeline"
 import { WorkflowSummaryCard } from "@/components/workflow/WorkflowSummaryCard"
+import {
+  filterRowsForDocumentTab,
+  groupRowsByIndex,
+  groupRowsBySection,
+  mapCamposToDisplayRows,
+  resolveFieldLabel,
+} from "@/lib/divergencia/field-display"
 import { ApiStatePanel } from "@/components/shared/ApiStatePanel"
 import { OperationalEmptyQueueCard } from "@/components/shared/OperationalEmptyQueueCard"
 import { TableSkeleton } from "@/components/shared/LoadingSkeleton"
@@ -37,46 +47,12 @@ import { fetchDashboard } from "@/lib/api/dashboard"
 import { useAuth } from "@/hooks/useAuth"
 import { fetchBlFinal } from "@/lib/api/bl-final"
 import type { BlFinalResponseDto } from "@/lib/api/types"
-import { cn, formatDateTime } from "@/lib/utils"
+import { formatDateTime } from "@/lib/utils"
 import { toast } from "sonner"
 import { useNavigate } from "react-router-dom"
 
-interface DisplayRow {
-  key: string
-  label: string
-  valorBlFinal: string
-  valorGlobalSys: string
-  status: string
-  categoria: string
-  pending: boolean
-}
-
 function isPendingCampoStatus(status: string): boolean {
   return status === "pendente"
-}
-
-function campoStatusBadge(status: string) {
-  if (isPendingCampoStatus(status)) {
-    return (
-      <Badge variant="danger">
-        <AlertTriangle className="h-3 w-3" /> Pendente
-      </Badge>
-    )
-  }
-
-  if (status.startsWith("resolvido")) {
-    return (
-      <Badge variant="success">
-        <CheckCircle2 className="h-3 w-3" /> Resolvido
-      </Badge>
-    )
-  }
-
-  return (
-    <Badge variant="success">
-      <CheckCircle2 className="h-3 w-3" /> Igual
-    </Badge>
-  )
 }
 
 function comparisonStatusLabel(status: string): string {
@@ -87,99 +63,6 @@ function comparisonStatusLabel(status: string): string {
     erro_comparacao: "Erro na comparação",
   }
   return labels[status] ?? status
-}
-
-function mapCamposToRows(campos: DivergenciaCampoDto[]): DisplayRow[] {
-  return campos.map((campo) => ({
-    key: campo.campoKey,
-    label: campo.campoLabel,
-    valorBlFinal: campo.valorBlFinal || campo.valorDraft || campo.valorFinal || "",
-    valorGlobalSys: campo.valorGlobalSys || "",
-    status: campo.status,
-    categoria: campo.categoria,
-    pending: isPendingCampoStatus(campo.status),
-  }))
-}
-
-function DivergenceTable({
-  data,
-  onResolveField,
-  resolvingKey,
-}: {
-  data: DisplayRow[]
-  onResolveField?: (campoKey: string, strategy: DivergenciaResolutionStrategy) => void
-  resolvingKey?: string | null
-}) {
-  const pendingCount = data.filter((d) => d.pending).length
-
-  if (data.length === 0) {
-    return (
-      <p className="text-sm text-muted-foreground py-4 text-center">
-        Nenhum campo nesta categoria.
-      </p>
-    )
-  }
-
-  return (
-    <div className="rounded-lg border border-border overflow-hidden">
-      <table className="w-full text-sm">
-        <thead className="bg-primary-50/60 border-b border-border">
-          <tr>
-            <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-primary-700">Campo</th>
-            <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-primary-700">BL Final</th>
-            <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-primary-700">GlobalSys</th>
-            <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-primary-700 w-36">Status</th>
-            {onResolveField && (
-              <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-primary-700 w-44">Ações</th>
-            )}
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-border">
-          {data.map((d) => (
-            <tr key={d.key} className={cn(d.pending && "bg-danger-50/40")}>
-              <td className="px-4 py-3 font-medium text-primary-900">{d.label}</td>
-              <td className={cn("px-4 py-3", d.pending && "font-semibold text-danger-700")}>{d.valorBlFinal || "—"}</td>
-              <td className={cn("px-4 py-3", d.pending && "font-semibold text-danger-700")}>{d.valorGlobalSys || "—"}</td>
-              <td className="px-4 py-3">{campoStatusBadge(d.status)}</td>
-              {onResolveField && (
-                <td className="px-4 py-3">
-                  {d.pending ? (
-                    <div className="flex gap-1">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 px-2 text-xs"
-                        disabled={resolvingKey === d.key}
-                        onClick={() => onResolveField(d.key, "aceitar_bl_final")}
-                      >
-                        BL
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 px-2 text-xs"
-                        disabled={resolvingKey === d.key}
-                        onClick={() => onResolveField(d.key, "aceitar_globalsys")}
-                      >
-                        GS
-                      </Button>
-                    </div>
-                  ) : (
-                    <span className="text-xs text-muted-foreground">—</span>
-                  )}
-                </td>
-              )}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      {pendingCount > 0 && (
-        <div className="bg-danger-50 px-4 py-2 text-xs text-danger-700 font-medium border-t border-danger-100">
-          {pendingCount} campo(s) pendente(s) nesta seção
-        </div>
-      )}
-    </div>
-  )
 }
 
 export default function Divergencia() {
@@ -345,13 +228,25 @@ export default function Divergencia() {
 
   const rows = useMemo(() => {
     if (!divergencia) return []
-    return mapCamposToRows(divergencia.campos)
+    return mapCamposToDisplayRows(divergencia.campos)
   }, [divergencia])
 
-  const masterRows = rows.filter((r) => r.categoria === "master")
-  const houseRows = rows.filter((r) => r.categoria === "house")
-  const cargoRows = rows.filter((r) => r.categoria === "cargo")
-  const ncmRows = rows.filter((r) => r.categoria === "ncm")
+  const masterSections = useMemo(
+    () => groupRowsBySection(filterRowsForDocumentTab(rows, "master", divergencia?.documentType ?? "Master")),
+    [rows, divergencia?.documentType],
+  )
+  const houseSections = useMemo(
+    () => groupRowsBySection(filterRowsForDocumentTab(rows, "house", divergencia?.documentType ?? "House")),
+    [rows, divergencia?.documentType],
+  )
+  const cargoGroups = useMemo(
+    () => groupRowsByIndex(filterRowsForDocumentTab(rows, "cargo", divergencia?.documentType ?? "Master"), "cargo"),
+    [rows, divergencia?.documentType],
+  )
+  const ncmGroups = useMemo(
+    () => groupRowsByIndex(filterRowsForDocumentTab(rows, "ncm", divergencia?.documentType ?? "Master"), "ncm"),
+    [rows, divergencia?.documentType],
+  )
 
   const pendingCount = rows.filter((r) => r.pending).length
   const allResolved = divergencia?.status === "resolvido" || pendingCount === 0
@@ -564,29 +459,29 @@ export default function Divergencia() {
                 </TabsList>
 
                 <TabsContent value="master">
-                  <DivergenceTable
-                    data={masterRows}
+                  <DivergenceSectionTables
+                    sections={masterSections}
                     onResolveField={handleFieldResolve}
                     resolvingKey={resolvingKey}
                   />
                 </TabsContent>
                 <TabsContent value="house">
-                  <DivergenceTable
-                    data={houseRows}
+                  <DivergenceSectionTables
+                    sections={houseSections}
                     onResolveField={handleFieldResolve}
                     resolvingKey={resolvingKey}
                   />
                 </TabsContent>
                 <TabsContent value="cargo">
-                  <DivergenceTable
-                    data={cargoRows}
+                  <DivergenceIndexedTables
+                    groups={cargoGroups}
                     onResolveField={handleFieldResolve}
                     resolvingKey={resolvingKey}
                   />
                 </TabsContent>
                 <TabsContent value="ncm">
-                  <DivergenceTable
-                    data={ncmRows}
+                  <DivergenceIndexedTables
+                    groups={ncmGroups}
                     onResolveField={handleFieldResolve}
                     resolvingKey={resolvingKey}
                   />
@@ -608,7 +503,7 @@ export default function Divergencia() {
                               <span className="font-semibold text-primary-900">
                                 {"responsavelNome" in h ? h.responsavelNome ?? user?.nome ?? "Sistema" : user?.nome ?? "Sistema"}
                               </span>{" "}
-                              resolveu <span className="font-medium">{h.campoLabel}</span>
+                              resolveu <span className="font-medium">{resolveFieldLabel(h.campoKey, h.campoLabel)}</span>
                             </p>
                             <p className="text-xs text-muted-foreground mt-0.5">
                               BL Final: <span className="font-medium">{h.valorBlFinal}</span>

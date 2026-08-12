@@ -10,6 +10,7 @@
 --   20260715120000_consolidate_app_persistence
 --   20260720120000_sprint1_bl_version_cargo_ncm
 --   20260720120001_sprint1_bl_indexes_cargo_ncm
+--   20260805100000_bl_workflow_filtered_unique_indexes
 --
 -- Se uma migration falhar, use:
 --   npx prisma migrate resolve --rolled-back "<migration_name>"

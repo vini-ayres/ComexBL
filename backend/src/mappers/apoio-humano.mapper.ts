@@ -1,5 +1,10 @@
-import type { BlHouse, BlMaster } from '@prisma/client';
+import type { BlHouse, BlHouseCargo, BlHouseNcm, BlMaster } from '@prisma/client';
 import type { Decimal } from '@prisma/client/runtime/library';
+import {
+  CARGO_COMPARABLE_FIELDS,
+  HOUSE_SCALAR_FIELDS,
+  MASTER_SCALAR_FIELDS,
+} from '../constants/bl-comparison.constants.js';
 import type {
   ApoioHumanoDocumentoDto,
   ApoioHumanoItemDto,
@@ -7,16 +12,30 @@ import type {
   CampoExtraidoStatus,
   HistoricoAlteracaoDto,
 } from '../types/apoio-humano.types.js';
+import {
+  buildCargoLogicalKey,
+  formatCargoDisplayTitle,
+  normalizeNcmCode,
+} from '../utils/comparison.utils.js';
 
-interface FieldDefinition {
-  id: string;
-  label: string;
-  getValue: (entity: BlMaster | BlHouse) => string | null | undefined;
-}
+const CARGO_FIELD_LABELS: Record<(typeof CARGO_COMPARABLE_FIELDS)[number], string> = {
+  Brand: 'Brand',
+  CounterMark: 'Counter Mark',
+  CargoType: 'Cargo Type',
+  HazardClass: 'Hazard Class',
+  UNNumber: 'UN Number',
+  Packaging: 'Packaging',
+};
 
-function formatValue(value: string | number | Decimal | null | undefined): string {
+function formatValue(
+  value: string | number | Decimal | Date | null | undefined,
+): string {
   if (value == null) {
     return '';
+  }
+
+  if (value instanceof Date) {
+    return value.toISOString().slice(0, 10);
   }
 
   return String(value).trim();
@@ -73,80 +92,49 @@ function buildDocumento(
   };
 }
 
-const masterFields: FieldDefinition[] = [
-  { id: 'm-bl', label: 'Número do BL', getValue: (e) => (e as BlMaster).MasterNumber },
-  { id: 'm-navio', label: 'Navio', getValue: (e) => (e as BlMaster).VesselName },
-  { id: 'm-viagem', label: 'Viagem', getValue: (e) => (e as BlMaster).Voyage },
-  {
-    id: 'm-origem',
-    label: 'Porto de Origem',
-    getValue: (e) => (e as BlMaster).LoadingPortName ?? (e as BlMaster).LoadingPortCode,
-  },
-  {
-    id: 'm-destino',
-    label: 'Porto de Destino',
-    getValue: (e) =>
-      (e as BlMaster).DischargePortName ??
-      (e as BlMaster).DeliveryPortName ??
-      (e as BlMaster).DischargePortCode,
-  },
-  { id: 'm-embarcador', label: 'Embarcador', getValue: (e) => (e as BlMaster).ShipperName },
-  { id: 'm-consignatario', label: 'Consignatário', getValue: (e) => (e as BlMaster).ConsigneeName },
-  { id: 'm-carrier', label: 'Agente de Carga', getValue: (e) => (e as BlMaster).CarrierName },
-  {
-    id: 'm-peso',
-    label: 'Peso Bruto Total',
-    getValue: (e) => formatValue((e as BlMaster).GrossWeight),
-  },
-  {
-    id: 'm-volumes',
-    label: 'Volumes',
-    getValue: (e) => formatValue((e as BlMaster).PackingQuantity),
-  },
-  { id: 'm-container', label: 'Container', getValue: (e) => (e as BlMaster).ContainerNumber },
-  { id: 'm-tipo-container', label: 'Tipo Container', getValue: (e) => (e as BlMaster).ContainerType },
-];
-
-const houseFields: FieldDefinition[] = [
-  { id: 'h-bl', label: 'Número HBL', getValue: (e) => (e as BlHouse).HouseNumber },
-  { id: 'h-embarcador', label: 'Embarcador', getValue: (e) => (e as BlHouse).ShipperName },
-  { id: 'h-consignatario', label: 'Consignatário', getValue: (e) => (e as BlHouse).ConsigneeName },
-  { id: 'h-notify', label: 'Notify', getValue: (e) => (e as BlHouse).NotifyName },
-  { id: 'h-mercadoria', label: 'Mercadoria', getValue: (e) => (e as BlHouse).ItemName },
-  {
-    id: 'h-origem',
-    label: 'Porto de Origem',
-    getValue: (e) => (e as BlHouse).LoadingPortName ?? (e as BlHouse).LoadingPortCode,
-  },
-  {
-    id: 'h-destino',
-    label: 'Porto de Destino',
-    getValue: (e) =>
-      (e as BlHouse).DischargePortName ??
-      (e as BlHouse).DeliveryPortName ??
-      (e as BlHouse).DischargePortCode,
-  },
-  {
-    id: 'h-peso',
-    label: 'Peso Bruto',
-    getValue: (e) => formatValue((e as BlHouse).GrossWeight ?? (e as BlHouse).ContainerGWT),
-  },
-  {
-    id: 'h-volumes',
-    label: 'Volumes',
-    getValue: (e) => formatValue((e as BlHouse).PackingQuantity ?? (e as BlHouse).ContainerQTY),
-  },
-  { id: 'h-container', label: 'Container', getValue: (e) => (e as BlHouse).ContainerNumber },
-  { id: 'h-lacre', label: 'Lacre', getValue: (e) => (e as BlHouse).ContainerSealNo1 },
-];
-
-function mapCampos(
-  entity: BlMaster | BlHouse,
-  fields: FieldDefinition[],
+function mapScalarCampos(
+  entity: Record<string, unknown>,
+  fields: readonly { key: string; label: string }[],
 ): CampoExtraidoDto[] {
-  return fields.map((field) =>
-    buildCampo(field.id, field.label, formatValue(field.getValue(entity))),
+  return fields.map(({ key, label }) =>
+    buildCampo(key, label, formatValue(entity[key] as string | number | Date | null)),
   );
+}
+
+function mapCargoCampos(
+  cargos: BlHouseCargo[],
+  keyPrefix = '',
+): CampoExtraidoDto[] {
+  const prefix = keyPrefix ? `${keyPrefix}.` : '';
+  const campos: CampoExtraidoDto[] = [];
+
+  cargos.forEach((cargo, index) => {
+    const logicalKey = buildCargoLogicalKey(cargo);
+    const displayTitle = formatCargoDisplayTitle(cargo, index);
+    const labelPrefix = keyPrefix ? `${keyPrefix} — ` : '';
+
+    for (const field of CARGO_COMPARABLE_FIELDS) {
+      const campoKey = `${prefix}cargo.${logicalKey}.${field}`;
+      const label = `${labelPrefix}${displayTitle} — ${CARGO_FIELD_LABELS[field]}`;
+
+      campos.push(
+        buildCampo(campoKey, label, formatValue(cargo[field])),
+      );
+    }
+  });
+
+  return campos;
+}
+
+function mapNcmCampos(ncms: BlHouseNcm[], keyPrefix = ''): CampoExtraidoDto[] {
+  const prefix = keyPrefix ? `${keyPrefix}.` : '';
+
+  return ncms.map((ncm) => {
+    const ncmCode = normalizeNcmCode(ncm.NcmCode);
+    const campoKey = `${prefix}ncm.${ncmCode}`;
+
+    return buildCampo(campoKey, `NCM ${ncmCode}`, ncmCode);
+  });
 }
 
 export function mapMasterApoioHumano(master: BlMaster): {
@@ -163,11 +151,17 @@ export function mapMasterApoioHumano(master: BlMaster): {
       viagem: master.Voyage ?? '-',
     },
     documento: buildDocumento(master.MasterNumber, master.DriveId),
-    campos: mapCampos(master, masterFields),
+    campos: mapScalarCampos(master, MASTER_SCALAR_FIELDS),
   };
 }
 
-export function mapHouseApoioHumano(house: BlHouse): {
+export function mapHouseApoioHumano(
+  house: BlHouse,
+  relations: { cargos: BlHouseCargo[]; ncms: BlHouseNcm[] } = {
+    cargos: [],
+    ncms: [],
+  },
+): {
   item: ApoioHumanoItemDto;
   documento: ApoioHumanoDocumentoDto;
   campos: CampoExtraidoDto[];
@@ -181,7 +175,11 @@ export function mapHouseApoioHumano(house: BlHouse): {
       viagem: '-',
     },
     documento: buildDocumento(house.HouseNumber, house.DriveId),
-    campos: mapCampos(house, houseFields),
+    campos: [
+      ...mapScalarCampos(house, HOUSE_SCALAR_FIELDS),
+      ...mapCargoCampos(relations.cargos),
+      ...mapNcmCampos(relations.ncms),
+    ],
   };
 }
 

@@ -1,5 +1,7 @@
 import type { Prisma } from '@prisma/client';
+import { Prisma as PrismaNamespace } from '@prisma/client';
 import type { BlCampoRevisao, BlHistoricoAlteracao } from '@prisma/client';
+import { applyApoioHumanoCamposToEntity } from '../mappers/apoio-humano-entity.mapper.js';
 import { prisma } from '../prisma/client.js';
 import type { ApoioHumanoQueueEntry } from '../types/apoio-humano.types.js';
 import type { SaveApoioHumanoCampoInput } from '../types/apoio-humano.types.js';
@@ -10,6 +12,8 @@ export interface SaveApoioHumanoParams {
   tipo: 'Master' | 'House';
   blId: number;
   campos: SaveApoioHumanoCampoInput[];
+  userId: number;
+  userDisplayName: string;
 }
 
 export class ApoioHumanoRepository {
@@ -79,45 +83,60 @@ export class ApoioHumanoRepository {
     return prisma.blHouse.findUnique({ where: { Id: id } });
   }
 
+  async findHouseWithRelationsById(id: number) {
+    const house = await this.findHouseById(id);
+
+    if (!house) {
+      return null;
+    }
+
+    const [cargos, ncms] = await Promise.all([
+      prisma.blHouseCargo.findMany({
+        where: { BlHouseId: house.Id },
+        orderBy: { Id: 'asc' },
+      }),
+      prisma.blHouseNcm.findMany({
+        where: { BlHouseId: house.Id },
+        orderBy: { Id: 'asc' },
+      }),
+    ]);
+
+    return { house, cargos, ncms };
+  }
+
   async findTestUser() {
     return prisma.appUser.findUnique({
       where: { Login: TEST_USER_LOGIN },
     });
   }
 
-  async findRevisoesByBl(tipo: 'Master' | 'House', blId: number) {
+  async findRevisoesByBl(
+    tipo: 'Master' | 'House',
+    blId: number,
+    client: Prisma.TransactionClient | typeof prisma = prisma,
+  ) {
     if (tipo === 'Master') {
-      return prisma.blCampoRevisao.findMany({
+      return client.blCampoRevisao.findMany({
         where: { BlMasterId: blId },
       });
     }
 
-    return prisma.blCampoRevisao.findMany({
+    return client.blCampoRevisao.findMany({
       where: { BlHouseId: blId },
     });
   }
 
-  async saveCampos(
-    params: SaveApoioHumanoParams,
-    tx?: Prisma.TransactionClient,
-  ): Promise<{
+  async saveCampos(params: SaveApoioHumanoParams): Promise<{
     saved: number;
     completed: boolean;
     historico: BlHistoricoAlteracao[];
   }> {
-    const client = tx ?? prisma;
-    const user = await this.findTestUser();
-
-    if (!user) {
-      throw new Error(
-        `Usuário de teste "${TEST_USER_LOGIN}" não encontrado. Execute npm run prisma:seed.`,
-      );
-    }
+    const saveStartedAt = new Date();
 
     const blExists =
       params.tipo === 'Master'
-        ? await this.findMasterById(params.blId)
-        : await this.findHouseById(params.blId);
+        ? await prisma.blMaster.findUnique({ where: { Id: params.blId } })
+        : await prisma.blHouse.findUnique({ where: { Id: params.blId } });
 
     if (!blExists) {
       throw new Error(`BL ${params.tipo} ${params.blId} não encontrado`);
@@ -128,66 +147,137 @@ export class ApoioHumanoRepository {
       existingRevisoes.map((item) => [item.CampoKey, item]),
     );
 
-    const historicoRecords: BlHistoricoAlteracao[] = [];
-    let saved = 0;
+    const camposByKey = new Map<string, SaveApoioHumanoCampoInput>();
 
     for (const campo of params.campos) {
+      camposByKey.set(campo.campoKey, campo);
+    }
+
+    const changedCampos = [...camposByKey.values()].filter((campo) => {
       const existing = existingByKey.get(campo.campoKey);
-      const hasChange = this.hasCampoChanged(existing, campo);
+      return !existing || this.hasCampoChanged(existing, campo);
+    });
 
-      const revision = existing
-        ? await client.blCampoRevisao.update({
-            where: { Id: existing.Id },
-            data: {
-              CampoLabel: campo.campoLabel,
-              ValorRecebido: campo.valorRecebido,
-              ValorManual: campo.valorManual,
-              Confianca: campo.confianca,
-              Status: campo.status,
-              UpdatedByUserId: user.Id,
-            },
-          })
-        : await client.blCampoRevisao.create({
-            data: {
-              BlMasterId: params.tipo === 'Master' ? params.blId : null,
-              BlHouseId: params.tipo === 'House' ? params.blId : null,
-              CampoKey: campo.campoKey,
-              CampoLabel: campo.campoLabel,
-              ValorRecebido: campo.valorRecebido,
-              ValorManual: campo.valorManual,
-              Confianca: campo.confianca,
-              Status: campo.status,
-              UpdatedByUserId: user.Id,
-            },
-          });
+    const historicoCreates: Prisma.BlHistoricoAlteracaoCreateManyInput[] = [];
 
-      existingByKey.set(campo.campoKey, revision);
-
-      if (!hasChange) {
-        continue;
-      }
-
-      saved += 1;
-
-      const historico = await client.blHistoricoAlteracao.create({
-        data: {
+    for (const campo of changedCampos) {
+      if (campo.status !== 'pendente') {
+        historicoCreates.push({
           BlMasterId: params.tipo === 'Master' ? params.blId : null,
           BlHouseId: params.tipo === 'House' ? params.blId : null,
-          UserId: user.Id,
-          Usuario: user.DisplayName,
+          UserId: params.userId,
+          Usuario: params.userDisplayName,
           Campo: campo.campoLabel,
-          ValorAntes: this.resolveValorAntes(existing, campo),
+          ValorAntes: this.resolveValorAntes(
+            existingByKey.get(campo.campoKey),
+            campo,
+          ),
           ValorDepois: this.resolveValorDepois(campo),
           Acao: campo.status === 'confirmado' ? 'confirmacao' : 'edicao',
-        },
-      });
-
-      historicoRecords.push(historico);
+        });
+      }
     }
+
+    await Promise.all(
+      changedCampos.map(async (campo) => {
+        const existing = existingByKey.get(campo.campoKey);
+        await this.upsertCampoRevisao(params, campo, existing);
+      }),
+    );
+
+    const saved = changedCampos.length;
+
+    if (historicoCreates.length > 0) {
+      await prisma.blHistoricoAlteracao.createMany({ data: historicoCreates });
+    }
+
+    await applyApoioHumanoCamposToEntity(params, prisma);
+
+    const historicoRecords =
+      historicoCreates.length > 0
+        ? await prisma.blHistoricoAlteracao.findMany({
+            where: {
+              ...(params.tipo === 'Master'
+                ? { BlMasterId: params.blId }
+                : { BlHouseId: params.blId }),
+              CreatedAt: { gte: saveStartedAt },
+            },
+            orderBy: { CreatedAt: 'desc' },
+            take: historicoCreates.length,
+          })
+        : [];
 
     const completed = !params.campos.some((campo) => campo.status === 'pendente');
 
     return { saved, completed, historico: historicoRecords };
+  }
+
+  private async upsertCampoRevisao(
+    params: SaveApoioHumanoParams,
+    campo: SaveApoioHumanoCampoInput,
+    existing?: BlCampoRevisao,
+  ): Promise<BlCampoRevisao> {
+    const revisionData = {
+      CampoLabel: campo.campoLabel,
+      ValorRecebido: campo.valorRecebido,
+      ValorManual: campo.valorManual,
+      Confianca: campo.confianca,
+      Status: campo.status,
+    };
+
+    if (existing) {
+      return prisma.blCampoRevisao.update({
+        where: { Id: existing.Id },
+        data: {
+          ...revisionData,
+          updatedBy: { connect: { Id: params.userId } },
+        },
+      });
+    }
+
+    try {
+      return await prisma.blCampoRevisao.create({
+        data: {
+          BlMasterId: params.tipo === 'Master' ? params.blId : null,
+          BlHouseId: params.tipo === 'House' ? params.blId : null,
+          CampoKey: campo.campoKey,
+          ...revisionData,
+          UpdatedByUserId: params.userId,
+        },
+      });
+    } catch (error) {
+      if (!this.isUniqueConstraintError(error)) {
+        throw error;
+      }
+
+      const concurrent = await prisma.blCampoRevisao.findFirst({
+        where: {
+          CampoKey: campo.campoKey,
+          ...(params.tipo === 'Master'
+            ? { BlMasterId: params.blId }
+            : { BlHouseId: params.blId }),
+        },
+      });
+
+      if (!concurrent) {
+        throw error;
+      }
+
+      return prisma.blCampoRevisao.update({
+        where: { Id: concurrent.Id },
+        data: {
+          ...revisionData,
+          updatedBy: { connect: { Id: params.userId } },
+        },
+      });
+    }
+  }
+
+  private isUniqueConstraintError(error: unknown): boolean {
+    return (
+      error instanceof PrismaNamespace.PrismaClientKnownRequestError &&
+      error.code === 'P2002'
+    );
   }
 
   private hasCampoChanged(

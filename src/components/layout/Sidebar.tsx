@@ -24,9 +24,9 @@ const sections: NavSection[] = [
     title: "Operação",
     items: [
       { to: "/", label: "Dashboard", icon: LayoutDashboard },
-      { to: "/bl-nao-encontrado", label: "BL Não Encontrado", icon: FileWarning, badge: 3 },
-      { to: "/apoio-humano", label: "Apoio Humano", icon: UserCog, badge: 5 },
-      { to: "/divergencia", label: "Divergências", icon: GitCompareArrows, badge: 7 },
+      { to: "/bl-nao-encontrado", label: "BL Não Encontrado", icon: FileWarning },
+      { to: "/apoio-humano", label: "Apoio Humano", icon: UserCog },
+      { to: "/divergencia", label: "Divergências", icon: GitCompareArrows },
       { to: "/processo-finalizado", label: "Processos Finalizados", icon: CheckCircle2 },
     ],
   },

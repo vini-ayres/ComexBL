@@ -30,10 +30,10 @@ export function Topbar({ onMenuClick, title }: { onMenuClick?: () => void; title
       </div>
 
       <div className="flex items-center gap-3">
-        <button className="relative rounded-full p-2 text-primary-700 hover:bg-primary-50 transition-colors">
+        {/* <button className="relative rounded-full p-2 text-primary-700 hover:bg-primary-50 transition-colors">
           <Bell className="h-5 w-5" />
           <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-accent ring-2 ring-white" />
-        </button>
+        </button> */}
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

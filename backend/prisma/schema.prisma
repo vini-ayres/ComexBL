@@ -68,7 +68,7 @@ model BlMaster {
   houses              BlHouse[]
   camposRevisao       BlCampoRevisao[]
   historico           BlHistoricoAlteracao[]
-  workflow            BlWorkflow?
+  workflows           BlWorkflow[]
   divergencias        BlDivergencia[]
   processoEtapas      BlProcessoEtapa[]
   consultasGlobalSys  BlConsultaGlobalSys[]
@@ -132,7 +132,7 @@ model BlHouse {
   ncms               BlHouseNcm[]
   camposRevisao      BlCampoRevisao[]
   historico          BlHistoricoAlteracao[]
-  workflow           BlWorkflow?
+  workflows          BlWorkflow[]
   divergencias       BlDivergencia[]
   processoEtapas     BlProcessoEtapa[]
   consultasGlobalSys BlConsultaGlobalSys[]
@@ -183,8 +183,8 @@ model BlHouseNcm {
 /// Status operacional: apoio_humano | divergencia | processando | finalizado | nao_encontrado
 model BlWorkflow {
   Id                 Int      @id(map: "PK_BL_Workflow") @default(autoincrement())
-  BlMasterId         Int?     @unique(map: "UQ_BL_Workflow_BlMasterId")
-  BlHouseId          Int?     @unique(map: "UQ_BL_Workflow_BlHouseId")
+  BlMasterId         Int?
+  BlHouseId          Int?
   TipoBl             String   @db.VarChar(10)
   Status             String   @db.VarChar(30)
   Pendencia          String?  @db.NVarChar(500)

@@ -54,7 +54,7 @@ export function ProcessoTimeline({ data }: ProcessoTimelineProps) {
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center gap-2 text-xs">
-        <Badge variant="secondary">Origem: {sourceLabel(data.source)}</Badge>
+        <Badge variant="neutral">Origem: {sourceLabel(data.source)}</Badge>
         {data.workflowStatus && (
           <Badge variant="outline">Workflow: {data.workflowStatus}</Badge>
         )}

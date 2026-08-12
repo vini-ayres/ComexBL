@@ -1,4 +1,5 @@
 import type { BlHouse, BlHouseCargo, BlHouseNcm, BlMaster, Prisma } from '@prisma/client';
+import type { BlVersion } from '../constants/bl-version.constants.js';
 import { BL_VERSION } from '../constants/bl-version.constants.js';
 import {
   BL_FINAL_HOUSE_GLOBALSYS_FIELDS,
@@ -31,6 +32,10 @@ import type {
   ResolveDivergenciaCampoRequestDto,
   ResolveDivergenciaRequestDto,
 } from '../types/divergencia-resolution.types.js';
+import { comparisonEngine } from '../domain/comparison/index.js';
+import type { ComparisonResult } from '../domain/comparison/index.js';
+import { GlobalSysCanonicalMapper } from '../mappers/globalsys-canonical.mapper.js';
+import { OcrCanonicalMapper } from '../mappers/ocr-canonical.mapper.js';
 import {
   blFinalCargoToComparable,
   blFinalNcmsToComparable,
@@ -45,6 +50,8 @@ import { BlDivergenciaRepository } from '../repositories/bl-divergencia.reposito
 import { BlHouseRepository } from '../repositories/bl-house.repository.js';
 import { BlMasterRepository } from '../repositories/bl-master.repository.js';
 import { GlobalSysBlRepository } from '../repositories/globalsys-bl.repository.js';
+import { globalSysComparacaoRepository } from '../repositories/globalsys-comparacao.repository.js';
+import { divergenciaRepository } from '../repositories/divergencia.repository.js';
 import type {
   BlDocumentType,
   BlFinalGlobalSysCargoComparison,
@@ -87,6 +94,131 @@ export class DivergenciaService {
     private readonly blFinalService: BlFinalService,
     private readonly globalSysBlRepository: GlobalSysBlRepository,
   ) {}
+
+  async compareMaster(
+    masterNumber: string,
+    blVersion: BlVersion,
+  ): Promise<ComparisonResult> {
+    const master = await this.masterRepository.findByMasterNumberAndVersion(
+      masterNumber,
+      blVersion,
+    );
+
+    if (!master) {
+      throw new NotFoundError(
+        `Master ${masterNumber} (${blVersion}) não encontrado no OCR`,
+      );
+    }
+
+    const globalSysAggregate =
+      await globalSysComparacaoRepository.loadMasterAggregate(masterNumber);
+
+    const localCanonical = OcrCanonicalMapper.fromMaster(master);
+    const globalSysCanonical =
+      GlobalSysCanonicalMapper.fromMaster(globalSysAggregate);
+
+    if (!globalSysCanonical) {
+      throw new NotFoundError(
+        `Master ${masterNumber} não encontrado no GlobalSys`,
+      );
+    }
+
+    const result = comparisonEngine.compareMaster(localCanonical, globalSysCanonical);
+
+    await prisma.$transaction(async (tx) => {
+      await divergenciaRepository.persistMasterComparison(master.Id, result, tx);
+      await this.workflowService.applyCanonicalComparisonResult(
+        'Master',
+        masterNumber,
+        blVersion,
+        result,
+        tx,
+      );
+    });
+
+    return result;
+  }
+
+  async compareHouse(
+    houseNumber: string,
+    blVersion: BlVersion,
+  ): Promise<ComparisonResult> {
+    const relations =
+      await this.houseRepository.findWithRelationsByHouseNumberAndVersion(
+        houseNumber,
+        blVersion,
+      );
+
+    if (!relations) {
+      throw new NotFoundError(
+        `House ${houseNumber} (${blVersion}) não encontrado no OCR`,
+      );
+    }
+
+    const globalSysAggregate =
+      await globalSysComparacaoRepository.loadHouseAggregate(houseNumber);
+
+    const localCanonical = OcrCanonicalMapper.fromHouse(
+      relations.house,
+      relations.cargos,
+      relations.ncms,
+    );
+
+    const globalSysCanonical =
+      GlobalSysCanonicalMapper.fromHouse(globalSysAggregate);
+
+    if (!globalSysCanonical) {
+      throw new NotFoundError(
+        `House ${houseNumber} não encontrado no GlobalSys`,
+      );
+    }
+
+    const result = comparisonEngine.compareHouse(localCanonical, globalSysCanonical);
+
+    await prisma.$transaction(async (tx) => {
+      await divergenciaRepository.persistHouseComparison(relations.house.Id, result, tx);
+      await this.workflowService.applyCanonicalComparisonResult(
+        'House',
+        houseNumber,
+        blVersion,
+        result,
+        tx,
+      );
+    });
+
+    return result;
+  }
+
+  /**
+   * Dispara comparação canônica OCR × GlobalSys após FINAL revisado.
+   * Falhas atualizam o workflow sem propagar exceção ao caller.
+   */
+  async triggerCanonicalComparison(
+    documentType: BlDocumentType,
+    documentNumber: string,
+  ): Promise<ComparisonResult | null> {
+    try {
+      if (documentType === 'Master') {
+        return await this.compareMaster(documentNumber, BL_VERSION.FINAL);
+      }
+
+      return await this.compareHouse(documentNumber, BL_VERSION.FINAL);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Erro desconhecido na comparação OCR × GlobalSys';
+
+      await this.workflowService.applyCanonicalComparisonError(
+        documentType,
+        documentNumber,
+        BL_VERSION.FINAL,
+        message,
+      );
+
+      return null;
+    }
+  }
 
   async compareAndPersistMaster(
     masterNumber: string,
@@ -177,10 +309,10 @@ export class DivergenciaService {
     documentNumber: string,
   ): Promise<DraftFinalComparisonResult> {
     if (documentType === 'Master') {
-      return this.compareMaster(documentNumber);
+      return this.runDraftAndFinalMasterComparison(documentNumber);
     }
 
-    return this.compareHouse(documentNumber);
+    return this.runDraftAndFinalHouseComparison(documentNumber);
   }
 
   compareFields<T extends Record<string, unknown>>(
@@ -289,7 +421,7 @@ export class DivergenciaService {
     });
   }
 
-  private async compareMaster(
+  private async runDraftAndFinalMasterComparison(
     masterNumber: string,
   ): Promise<DraftFinalComparisonResult> {
     const [draft, finalVersion] = await Promise.all([
@@ -337,7 +469,7 @@ export class DivergenciaService {
     );
   }
 
-  private async compareHouse(
+  private async runDraftAndFinalHouseComparison(
     houseNumber: string,
   ): Promise<DraftFinalComparisonResult> {
     const [draft, finalVersion] = await Promise.all([

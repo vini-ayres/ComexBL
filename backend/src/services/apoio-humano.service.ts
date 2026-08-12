@@ -1,5 +1,6 @@
 import { BL_VERSION } from '../constants/bl-version.constants.js';
 import { BadRequestError, NotFoundError } from '../errors/AppError.js';
+import type { BlHouse, BlMaster } from '@prisma/client';
 import {
   hasCamposPendentes,
   mapHouseApoioHumano,
@@ -7,7 +8,6 @@ import {
   mapMasterApoioHumano,
   mergeCamposComRevisoes,
 } from '../mappers/apoio-humano.mapper.js';
-import { prisma } from '../prisma/client.js';
 import { ApoioHumanoRepository } from '../repositories/apoio-humano.repository.js';
 import type {
   ApoioHumanoDetailDto,
@@ -18,12 +18,14 @@ import type {
 import type { UpdateWorkflowInput } from '../types/bl-domain.types.js';
 import type { PaginationQuery } from '../types/bl.types.js';
 import { getSkipTake } from '../utils/pagination.js';
+import type { DivergenciaService } from './divergencia.service.js';
 import type { WorkflowService } from './workflow.service.js';
 
 export class ApoioHumanoService {
   constructor(
     private readonly repository: ApoioHumanoRepository,
     private readonly workflowService: WorkflowService,
+    private readonly divergenciaService: DivergenciaService,
   ) {}
 
   async getQueueItem(
@@ -95,59 +97,59 @@ export class ApoioHumanoService {
         ...payload.campos.map((campo) => campo.confianca),
       );
 
-      const result = await prisma.$transaction(async (tx) => {
-        const saveResult = await this.repository.saveCampos(
-          {
-            tipo,
-            blId,
-            campos: payload.campos,
-          },
-          tx,
-        );
+      const blExists =
+        tipo === 'Master'
+          ? await this.repository.findMasterById(blId)
+          : await this.repository.findHouseById(blId);
 
-        if (tipo === 'Master') {
-          const master = await this.repository.findMasterById(blId);
+      if (!blExists) {
+        throw new NotFoundError(`BL ${tipo} ${blId} não encontrado`);
+      }
 
-          if (!master) {
-            throw new NotFoundError(`BL Master ${blId} não encontrado`);
-          }
-
-          await this.workflowService.updateWorkflowForMasterDocument(
-            master,
-            this.buildWorkflowAfterApoioHumano(
-              master.BlVersion,
-              pendentes,
-              confianca,
-              user.Id,
-            ),
-            tx,
-          );
-        } else {
-          const house = await this.repository.findHouseById(blId);
-
-          if (!house) {
-            throw new NotFoundError(`BL House ${blId} não encontrado`);
-          }
-
-          await this.workflowService.updateWorkflowForHouseDocument(
-            house,
-            this.buildWorkflowAfterApoioHumano(
-              house.BlVersion,
-              pendentes,
-              confianca,
-              user.Id,
-            ),
-            tx,
-          );
-        }
-
-        return saveResult;
+      const saveResult = await this.repository.saveCampos({
+        tipo,
+        blId,
+        campos: payload.campos,
+        userId: user.Id,
+        userDisplayName: user.DisplayName,
       });
 
+      const workflowData = this.buildWorkflowAfterApoioHumano(
+        blExists.BlVersion,
+        pendentes,
+        confianca,
+        user.Id,
+      );
+
+      if (tipo === 'Master') {
+        await this.workflowService.updateWorkflowForMasterDocument(
+          blExists as BlMaster,
+          workflowData,
+        );
+      } else {
+        await this.workflowService.updateWorkflowForHouseDocument(
+          blExists as BlHouse,
+          workflowData,
+        );
+      }
+
+      const documentNumber =
+        tipo === 'Master'
+          ? (blExists as BlMaster).MasterNumber
+          : (blExists as BlHouse).HouseNumber;
+      const blVersion = blExists.BlVersion;
+
+      if (pendentes === 0 && blVersion === BL_VERSION.FINAL) {
+        await this.divergenciaService.triggerCanonicalComparison(
+          tipo,
+          documentNumber,
+        );
+      }
+
       return {
-        saved: result.saved,
-        completed: result.completed,
-        historico: result.historico.map(mapHistoricoAlteracao),
+        saved: saveResult.saved,
+        completed: saveResult.completed,
+        historico: saveResult.historico.map(mapHistoricoAlteracao),
       };
     } catch (error) {
       if (error instanceof Error && error.message.includes('não encontrado')) {
@@ -207,7 +209,7 @@ export class ApoioHumanoService {
 
   /**
    * DRAFT: após revisão humana completa, o processo encerra (sem Divergências).
-   * FINAL: segue para comparação e Divergências antes de finalizar.
+   * FINAL: dispara comparação canônica OCR × GlobalSys via triggerCanonicalComparison.
    */
   private buildWorkflowAfterApoioHumano(
     blVersion: string,
@@ -275,12 +277,15 @@ export class ApoioHumanoService {
       return mapMasterApoioHumano(master);
     }
 
-    const house = await this.repository.findHouseById(entry.id);
+    const houseRelations = await this.repository.findHouseWithRelationsById(entry.id);
 
-    if (!house) {
+    if (!houseRelations) {
       throw new NotFoundError(`BL House ${entry.id} não encontrado`);
     }
 
-    return mapHouseApoioHumano(house);
+    return mapHouseApoioHumano(houseRelations.house, {
+      cargos: houseRelations.cargos,
+      ncms: houseRelations.ncms,
+    });
   }
 }

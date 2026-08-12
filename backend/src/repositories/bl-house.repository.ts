@@ -33,6 +33,26 @@ export class BlHouseRepository {
     return this.findByHouseNumberAndVersion(houseNumber, BL_VERSION.FINAL);
   }
 
+  async findByContainerNumberAndVersion(
+    containerNumber: string,
+    blVersion: BlVersion,
+  ): Promise<BlHouse[]> {
+    return prisma.blHouse.findMany({
+      where: {
+        ContainerNumber: containerNumber.trim(),
+        BlVersion: blVersion,
+      },
+      orderBy: { HouseNumber: 'asc' },
+    });
+  }
+
+  async linkToMaster(houseId: number, masterId: number): Promise<BlHouse> {
+    return prisma.blHouse.update({
+      where: { Id: houseId },
+      data: { BLMasterId: masterId },
+    });
+  }
+
   async findByMasterIdAndVersion(
     masterId: number,
     blVersion: BlVersion,
