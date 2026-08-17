@@ -168,10 +168,15 @@ export const apoioHumanoService = new ApoioHumanoService(
 
   divergenciaService,
 
+  globalSysConsultaService,
+
 );
 
 
 
-export const dashboardService = new DashboardService(dashboardRepository);
+export const dashboardService = new DashboardService(
+  dashboardRepository,
+  apoioHumanoService,
+);
 
 export { processoService };

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import {
-  Check, Pencil, History, Save, CheckCircle2, AlertCircle,
+  Check, Pencil, Save, CheckCircle2, AlertCircle,
   UserCog, X, ChevronLeft, ChevronRight, Loader2, Boxes, Hash,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -12,9 +12,9 @@ import { DocumentViewer } from "@/components/shared/DocumentViewer"
 import { OperationalEmptyQueueCard } from "@/components/shared/OperationalEmptyQueueCard"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { fetchApoioHumano, saveApoioHumanoCampos } from "@/lib/api/apoio-humano"
-import type { ApoioHumanoDetailDto, CampoExtraidoDto, HistoricoAlteracaoDto } from "@/lib/api/types"
+import type { ApoioHumanoDetailDto, CampoExtraidoDto } from "@/lib/api/types"
 import { ApiError } from "@/lib/api/client"
-import { formatDateTime, cn } from "@/lib/utils"
+import { cn } from "@/lib/utils"
 import { groupCargoCampos, resolveCargoFieldLabel } from "@/lib/apoio-humano/cargo-display"
 import { toast } from "sonner"
 
@@ -192,7 +192,6 @@ function CargoCamposTable({
 export default function ApoioHumano() {
   const [data, setData] = useState<ApoioHumanoDetailDto | null>(null)
   const [campos, setCampos] = useState<CampoExtraidoDto[]>([])
-  const [historico, setHistorico] = useState<HistoricoAlteracaoDto[]>([])
   const [page, setPage] = useState(1)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -209,7 +208,6 @@ export default function ApoioHumano() {
       const result = await fetchApoioHumano(targetPage)
       setData(result)
       setCampos(result.campos)
-      setHistorico(result.historico)
       setPage(result.pagination.page)
     } catch (err) {
       const message = err instanceof ApiError
@@ -293,10 +291,6 @@ export default function ApoioHumano() {
           status: campo.status,
         })),
       })
-
-      if (result.historico.length > 0) {
-        setHistorico((prev) => [...result.historico, ...prev])
-      }
 
       if (result.completed) {
         toast.success("Revisão concluída. Carregando próximo BL da fila...")
@@ -409,6 +403,8 @@ export default function ApoioHumano() {
           nome={data.documento.nome}
           paginas={data.documento.paginas}
           origemPath={data.documento.origemPath}
+          fileName={data.documento.fileName}
+          blVersion={data.item.blVersion}
           className="xl:sticky xl:top-20 h-fit"
         />
 
@@ -427,79 +423,45 @@ export default function ApoioHumano() {
             )}
 
             {!loading && (
-              <Tabs defaultValue="campos">
-                <TabsList>
-                  <TabsTrigger value="campos">Campos</TabsTrigger>
-                  <TabsTrigger value="historico">Histórico de Alterações</TabsTrigger>
-                </TabsList>
-
-                <TabsContent value="campos">
-                  {isHouseDocument ? (
-                    <Tabs defaultValue="scalar">
-                      <TabsList>
-                        <TabsTrigger value="scalar">Campos ({scalarCampos.length})</TabsTrigger>
-                        <TabsTrigger value="cargo">
-                          <Boxes className="h-3.5 w-3.5 mr-1" /> Cargo ({cargoCampos.length})
-                        </TabsTrigger>
-                        <TabsTrigger value="ncm">
-                          <Hash className="h-3.5 w-3.5 mr-1" /> NCM ({ncmCampos.length})
-                        </TabsTrigger>
-                      </TabsList>
-                      <TabsContent value="scalar">
-                        <CamposTable
-                          campos={scalarCampos}
-                          {...camposTableProps}
-                          emptyMessage="Nenhum campo escalar para validar."
-                        />
-                      </TabsContent>
-                      <TabsContent value="cargo">
-                        <CargoCamposTable
-                          campos={cargoCampos}
-                          {...camposTableProps}
-                        />
-                      </TabsContent>
-                      <TabsContent value="ncm">
-                        <CamposTable
-                          campos={ncmCampos}
-                          {...camposTableProps}
-                          emptyMessage="Nenhum NCM vinculado a este House."
-                        />
-                      </TabsContent>
-                    </Tabs>
-                  ) : (
+              isHouseDocument ? (
+                <Tabs defaultValue="scalar">
+                  <TabsList>
+                    <TabsTrigger value="scalar">Campos ({scalarCampos.length})</TabsTrigger>
+                    <TabsTrigger value="cargo">
+                      <Boxes className="h-3.5 w-3.5 mr-1" /> Cargo ({cargoCampos.length})
+                    </TabsTrigger>
+                    <TabsTrigger value="ncm">
+                      <Hash className="h-3.5 w-3.5 mr-1" /> NCM ({ncmCampos.length})
+                    </TabsTrigger>
+                  </TabsList>
+                  <TabsContent value="scalar">
                     <CamposTable
-                      campos={campos}
+                      campos={scalarCampos}
                       {...camposTableProps}
-                      emptyMessage="Nenhum campo para validar."
+                      emptyMessage="Nenhum campo escalar para validar."
                     />
-                  )}
-                </TabsContent>
-
-                <TabsContent value="historico">
-                  <div className="space-y-3">
-                    {historico.length === 0 && (
-                      <p className="text-sm text-muted-foreground py-6 text-center">Nenhuma alteração registrada para este BL.</p>
-                    )}
-                    {historico.map((h) => (
-                      <div key={h.id} className="flex items-start gap-3 rounded-lg border border-border p-3">
-                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary-50 text-primary-600">
-                          <History className="h-4 w-4" />
-                        </div>
-                        <div className="flex-1 text-sm">
-                          <p>
-                            <span className="font-semibold text-primary-900">{h.usuario}</span>{" "}
-                            alterou <span className="font-medium">{h.campo}</span>
-                          </p>
-                          <p className="text-xs text-muted-foreground mt-0.5">
-                            <span className="line-through">{h.valorAntes}</span> → <span className="text-primary-800 font-medium">{h.valorDepois}</span>
-                          </p>
-                          <p className="text-[11px] text-muted-foreground mt-1">{formatDateTime(h.dataHora)}</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </TabsContent>
-              </Tabs>
+                  </TabsContent>
+                  <TabsContent value="cargo">
+                    <CargoCamposTable
+                      campos={cargoCampos}
+                      {...camposTableProps}
+                    />
+                  </TabsContent>
+                  <TabsContent value="ncm">
+                    <CamposTable
+                      campos={ncmCampos}
+                      {...camposTableProps}
+                      emptyMessage="Nenhum NCM vinculado a este House."
+                    />
+                  </TabsContent>
+                </Tabs>
+              ) : (
+                <CamposTable
+                  campos={campos}
+                  {...camposTableProps}
+                  emptyMessage="Nenhum campo para validar."
+                />
+              )
             )}
           </CardContent>
         </Card>

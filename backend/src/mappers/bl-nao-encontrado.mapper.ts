@@ -6,14 +6,18 @@ import type {
 
 function buildDocumento(
   numeroBl: string,
-  driveId: string | null,
+  fileName: string | null,
 ): BlNaoEncontradoListItemDto['documento'] {
-  const origemPath = driveId ? `/BLs/${driveId}` : '/BLs/Pendentes';
+  const nome = fileName?.trim() || `${numeroBl}_original.pdf`;
+  const origemPath = fileName?.trim()
+    ? `files/${fileName.trim()}`
+    : 'files/pendentes';
 
   return {
-    nome: `${numeroBl}_original.pdf`,
+    nome,
     paginas: 1,
     origemPath,
+    fileName: fileName?.trim() || null,
   };
 }
 
@@ -27,7 +31,7 @@ export function mapBlNaoEncontradoListItem(
     data: (row.dataReferencia ?? row.ultimaTentativa).toISOString(),
     tentativasConsulta: row.tentativasConsulta,
     ultimaTentativa: row.ultimaTentativa.toISOString(),
-    documento: buildDocumento(row.numeroBl, row.driveId),
+    documento: buildDocumento(row.numeroBl, row.fileName),
   };
 }
 

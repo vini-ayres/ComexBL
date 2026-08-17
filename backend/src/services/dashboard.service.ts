@@ -11,14 +11,20 @@ import type {
   DashboardResponseDto,
 } from '../types/dashboard.types.js';
 import { buildPaginatedResult } from '../utils/pagination.js';
+import type { ApoioHumanoService } from './apoio-humano.service.js';
 
 export class DashboardService {
-  constructor(private readonly repository: DashboardRepository) {}
+  constructor(
+    private readonly repository: DashboardRepository,
+    private readonly apoioHumanoService: ApoioHumanoService,
+  ) {}
 
   async getDashboard(
     pagination: PaginationQuery,
     filters: DashboardFilters = {},
   ): Promise<DashboardResponseDto> {
+    await this.apoioHumanoService.syncPendingWorkflowStatus();
+
     const [kpiCounts, listResult] = await Promise.all([
       this.repository.getKpiCounts(),
       this.repository.findOperationalItems(pagination, filters),
@@ -31,6 +37,7 @@ export class DashboardService {
   }
 
   async getKpis(): Promise<DashboardKpiDto[]> {
+    await this.apoioHumanoService.syncPendingWorkflowStatus();
     const counts = await this.repository.getKpiCounts();
     return mapDashboardKpis(counts);
   }
@@ -39,6 +46,8 @@ export class DashboardService {
     pagination: PaginationQuery,
     filters: DashboardFilters = {},
   ): Promise<PaginatedResult<DashboardBlListItemDto>> {
+    await this.apoioHumanoService.syncPendingWorkflowStatus();
+
     const { items, total } = await this.repository.findOperationalItems(
       pagination,
       filters,

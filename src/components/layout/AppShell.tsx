@@ -11,10 +11,8 @@ const titles: Record<string, string> = {
   "/processo-finalizado": "Processo Finalizado",
   "/admin/usuarios": "Usuários",
   "/admin/rbac": "Perfis & Permissões",
-  "/admin/auditoria": "Auditoria",
   "/admin/bl-database": "BL Master / House",
   "/admin/ldap": "LDAP / Active Directory",
-  "/admin/onedrive": "Integração OneDrive",
   "/admin/banco-dados": "Banco de Dados",
 }
 

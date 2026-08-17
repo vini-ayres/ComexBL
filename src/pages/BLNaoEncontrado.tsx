@@ -196,21 +196,21 @@ export default function BLNaoEncontrado() {
                       )}
                       Consultar novamente
                     </Button>
-                    <Button variant="accent" onClick={() => setAssocOpen(true)}>
+                    {/*<Button variant="accent" onClick={() => setAssocOpen(true)}>
                       <Link2 className="h-4 w-4" /> Associar manualmente
-                    </Button>
+                    </Button> */}
                     <a
                       href="http://globalsyshomolog.fcalog.com.br/"
                       target="_blank"
                       rel="noopener noreferrer"
                     >
-                      <Button variant="outline">
+                      <Button variant="accent">
                         <ExternalLink className="h-4 w-4" /> Abrir GlobalSys
                       </Button>
                     </a>
-                    <Button variant="ghost" className="text-muted-foreground" onClick={handleIgnorar}>
+                    {/* <Button variant="ghost" className="text-muted-foreground" onClick={handleIgnorar}>
                       <XCircle className="h-4 w-4" /> Ignorar
-                    </Button>
+                    </Button> */}
                   </div>
                 </CardContent>
               </Card>
@@ -219,6 +219,7 @@ export default function BLNaoEncontrado() {
                 nome={selected.documento.nome}
                 paginas={selected.documento.paginas}
                 origemPath={selected.documento.origemPath}
+                fileName={selected.documento.fileName}
               />
             </div>
           )}

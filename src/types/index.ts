@@ -57,7 +57,7 @@ export interface BLMaster {
   containers: Container[]
   houses: string[] // ids de BLHouse
   status: BLStatus
-  origemArquivo: string // OneDrive path
+  origemArquivo: string // files/{FileName}
 }
 
 export interface BLHouse {

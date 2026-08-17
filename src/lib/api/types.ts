@@ -92,6 +92,7 @@ export interface ApoioHumanoDocumentoDto {
   nome: string
   paginas: number
   origemPath: string
+  fileName: string | null
 }
 
 export interface ApoioHumanoItemDto {
@@ -100,6 +101,7 @@ export interface ApoioHumanoItemDto {
   numeroBl: string
   navio: string
   viagem: string
+  blVersion: BlVersion
 }
 
 export interface SaveApoioHumanoCampoInput {
@@ -183,6 +185,7 @@ export interface BlNaoEncontradoDocumentoDto {
   nome: string
   paginas: number
   origemPath: string
+  fileName: string | null
 }
 
 export interface BlNaoEncontradoListItemDto {

@@ -62,24 +62,19 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
 
 const AD_GROUPS = [
   {
-    name: 'GG_COMEX_ADMIN',
-    dn: 'CN=GG_COMEX_ADMIN,OU=Grupos,OU=Comex,DC=empresa,DC=com,DC=br',
+    name: 'GG_OCR_BL_ADMIN',
+    dn: 'CN=GG_OCR_BL_ADMIN,OU=Grupos,OU=OCR,DC=empresa,DC=com,DC=br',
     roleName: 'Administrador',
   },
   {
-    name: 'GG_COMEX_SUPERVISORES',
-    dn: 'CN=GG_COMEX_SUPERVISORES,OU=Grupos,OU=Comex,DC=empresa,DC=com,DC=br',
+    name: 'GG_OCR_BL_SUPERVISOR',
+    dn: 'CN=GG_OCR_BL_SUPERVISOR,OU=Grupos,OU=OCR,DC=empresa,DC=com,DC=br',
     roleName: 'Supervisor',
   },
   {
-    name: 'GG_COMEX_OPERADORES',
-    dn: 'CN=GG_COMEX_OPERADORES,OU=Grupos,OU=Comex,DC=empresa,DC=com,DC=br',
+    name: 'GG_OCR_BL_OPERADOR',
+    dn: 'CN=GG_OCR_BL_OPERADOR,OU=Grupos,OU=OCR,DC=empresa,DC=com,DC=br',
     roleName: 'Operador',
-  },
-  {
-    name: 'GG_COMEX_AUDITORIA',
-    dn: 'CN=GG_COMEX_AUDITORIA,OU=Grupos,OU=Comex,DC=empresa,DC=com,DC=br',
-    roleName: 'Auditor',
   },
 ] as const;
 
@@ -88,7 +83,7 @@ const TEST_USER = {
   email: 'teste@empresa.com.br',
   displayName: 'Usuário de Teste',
   avatarColor: '#DC2626',
-  adGroupName: 'GG_COMEX_ADMIN',
+  adGroupName: 'GG_OCR_BL_ADMIN',
   roleName: 'Administrador',
 };
 
@@ -235,8 +230,8 @@ async function seedIntegrationDefaults(): Promise<void> {
         servidor: 'ldap://ad01.empresa.com.br',
         porta: 389,
         baseDN: 'DC=empresa,DC=com,DC=br',
-        grupoAD: 'GG_COMEX_*',
-        bindUser: 'svc_comex_ldap',
+        grupoAD: 'GG_OCR_BL_*',
+        bindUser: 'svc_ocr_bl',
         usarSSL: true,
       },
     },

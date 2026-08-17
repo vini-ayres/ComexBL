@@ -1,6 +1,7 @@
-import { BL_VERSION } from '../constants/bl-version.constants.js';
-import { BadRequestError, NotFoundError } from '../errors/AppError.js';
 import type { BlHouse, BlMaster } from '@prisma/client';
+import { logger } from '../config/logger.js';
+import { BL_VERSION, isBlVersion } from '../constants/bl-version.constants.js';
+import { AppError, BadRequestError, NotFoundError, UnauthorizedError } from '../errors/AppError.js';
 import {
   hasCamposPendentes,
   mapHouseApoioHumano,
@@ -9,6 +10,7 @@ import {
   mergeCamposComRevisoes,
 } from '../mappers/apoio-humano.mapper.js';
 import { ApoioHumanoRepository } from '../repositories/apoio-humano.repository.js';
+import { authRepository } from '../repositories/auth.repository.js';
 import type {
   ApoioHumanoDetailDto,
   ApoioHumanoQueueEntry,
@@ -19,13 +21,18 @@ import type { UpdateWorkflowInput } from '../types/bl-domain.types.js';
 import type { PaginationQuery } from '../types/bl.types.js';
 import { getSkipTake } from '../utils/pagination.js';
 import type { DivergenciaService } from './divergencia.service.js';
+import type { GlobalSysConsultaService } from './globalsys-consulta.service.js';
 import type { WorkflowService } from './workflow.service.js';
+
+const APOIO_HUMANO_PENDENCIA = 'Campos OCR aguardando revisão humana';
+const STATUSES_ELIGIBLE_FOR_APOIO_HUMANO = new Set(['processando']);
 
 export class ApoioHumanoService {
   constructor(
     private readonly repository: ApoioHumanoRepository,
     private readonly workflowService: WorkflowService,
     private readonly divergenciaService: DivergenciaService,
+    private readonly globalSysConsultaService: GlobalSysConsultaService,
   ) {}
 
   async getQueueItem(
@@ -60,10 +67,19 @@ export class ApoioHumanoService {
     };
   }
 
+  /**
+   * Valida existência no GlobalSys e grava BL_Workflow.Status = apoio_humano
+   * somente para BLs já localizados. Sem isso, o dashboard trata BL sem workflow como processando.
+   */
+  async syncPendingWorkflowStatus(): Promise<void> {
+    await this.resolvePendingEntries();
+  }
+
   async saveCampos(
     tipoParam: string,
     blId: number,
     payload: SaveApoioHumanoRequestDto,
+    authUserId?: number,
   ): Promise<SaveApoioHumanoResponseDto> {
     const tipo = this.parseTipo(tipoParam);
 
@@ -82,12 +98,12 @@ export class ApoioHumanoService {
     }
 
     try {
-      const user = await this.repository.findTestUser();
+      const user = authUserId
+        ? await authRepository.findUserById(authUserId)
+        : await this.repository.findTestUser();
 
       if (!user) {
-        throw new Error(
-          'Usuário de teste "teste" não encontrado. Execute npm run prisma:seed.',
-        );
+        throw new UnauthorizedError('Usuário autenticado não encontrado.');
       }
 
       const pendentes = payload.campos.filter(
@@ -104,6 +120,15 @@ export class ApoioHumanoService {
 
       if (!blExists) {
         throw new NotFoundError(`BL ${tipo} ${blId} não encontrado`);
+      }
+
+      const localizadoNoGlobalSys =
+        await this.repository.hasLatestSuccessfulConsulta(tipo, blId);
+
+      if (!localizadoNoGlobalSys) {
+        throw new BadRequestError(
+          'BL ainda não foi localizado no GlobalSys. Conclua a etapa de BL não encontrado antes do Apoio Humano.',
+        );
       }
 
       const saveResult = await this.repository.saveCampos({
@@ -152,6 +177,10 @@ export class ApoioHumanoService {
         historico: saveResult.historico.map(mapHistoricoAlteracao),
       };
     } catch (error) {
+      if (error instanceof AppError) {
+        throw error;
+      }
+
       if (error instanceof Error && error.message.includes('não encontrado')) {
         throw new NotFoundError(error.message);
       }
@@ -161,6 +190,8 @@ export class ApoioHumanoService {
   }
 
   private async resolvePendingEntries(): Promise<ApoioHumanoQueueEntry[]> {
+    await this.globalSysConsultaService.consultPendingDocuments();
+
     const candidates = await this.repository.findQueueCandidates();
 
     if (candidates.length === 0) {
@@ -204,7 +235,126 @@ export class ApoioHumanoService {
       }
     }
 
+    await this.persistApoioHumanoStatus(pendingEntries);
+
     return pendingEntries;
+  }
+
+  private async persistApoioHumanoStatus(
+    entries: ApoioHumanoQueueEntry[],
+  ): Promise<void> {
+    for (const entry of entries) {
+      try {
+        await this.ensureApoioHumanoWorkflow(entry);
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : 'Erro desconhecido';
+
+        logger.error(
+          `Falha ao gravar status apoio_humano para ${entry.tipo} ${entry.id}: ${message}`,
+        );
+      }
+    }
+  }
+
+  private async ensureApoioHumanoWorkflow(
+    entry: ApoioHumanoQueueEntry,
+  ): Promise<void> {
+    const workflowData: UpdateWorkflowInput = {
+      status: 'apoio_humano',
+      pendencia: APOIO_HUMANO_PENDENCIA,
+    };
+
+    if (entry.tipo === 'Master') {
+      const master = await this.repository.findMasterById(entry.id);
+
+      if (!master) {
+        return;
+      }
+
+      const currentStatus = await this.getMasterWorkflowStatus(
+        master.MasterNumber,
+        master.BlVersion,
+      );
+
+      if (!(await this.canEnterApoioHumano(entry.tipo, entry.id, currentStatus))) {
+        return;
+      }
+
+      await this.workflowService.updateWorkflowForMasterDocument(
+        master,
+        workflowData,
+      );
+      return;
+    }
+
+    const house = await this.repository.findHouseById(entry.id);
+
+    if (!house) {
+      return;
+    }
+
+    const currentStatus = await this.getHouseWorkflowStatus(
+      house.HouseNumber,
+      house.BlVersion,
+    );
+
+    if (!(await this.canEnterApoioHumano(entry.tipo, entry.id, currentStatus))) {
+      return;
+    }
+
+    await this.workflowService.updateWorkflowForHouseDocument(
+      house,
+      workflowData,
+    );
+  }
+
+  private async canEnterApoioHumano(
+    tipo: 'Master' | 'House',
+    blId: number,
+    currentStatus: string | null,
+  ): Promise<boolean> {
+    if (currentStatus == null) {
+      return false;
+    }
+
+    if (!STATUSES_ELIGIBLE_FOR_APOIO_HUMANO.has(currentStatus)) {
+      return false;
+    }
+
+    return this.repository.hasLatestSuccessfulConsulta(tipo, blId);
+  }
+
+  private async getMasterWorkflowStatus(
+    masterNumber: string,
+    blVersionValue: string,
+  ): Promise<string | null> {
+    if (!isBlVersion(blVersionValue)) {
+      return null;
+    }
+
+    const context = await this.workflowService.getWorkflowByMasterNumberAndVersion(
+      masterNumber,
+      blVersionValue,
+    );
+
+    return context?.workflow.Status ?? null;
+  }
+
+  private async getHouseWorkflowStatus(
+    houseNumber: string,
+    blVersionValue: string,
+  ): Promise<string | null> {
+    if (!isBlVersion(blVersionValue)) {
+      return null;
+    }
+
+    const context = await this.workflowService.getWorkflowByHouseNumberAndVersion(
+      houseNumber,
+      blVersionValue,
+    );
+
+    return context?.workflow.Status ?? null;
   }
 
   /**

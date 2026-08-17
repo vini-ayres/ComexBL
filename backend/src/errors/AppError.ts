@@ -47,3 +47,24 @@ export class ValidationError extends AppError {
     this.name = 'ValidationError';
   }
 }
+
+export class UnauthorizedError extends AppError {
+  constructor(message = 'Não autenticado') {
+    super(401, message);
+    this.name = 'UnauthorizedError';
+  }
+}
+
+export class ForbiddenError extends AppError {
+  constructor(message = 'Acesso negado') {
+    super(403, message);
+    this.name = 'ForbiddenError';
+  }
+}
+
+export class ServiceUnavailableError extends AppError {
+  constructor(message = 'Serviço indisponível') {
+    super(503, message);
+    this.name = 'ServiceUnavailableError';
+  }
+}

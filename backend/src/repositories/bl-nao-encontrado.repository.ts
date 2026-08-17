@@ -19,7 +19,7 @@ export class BlNaoEncontradoRepository {
         tentativasConsulta: number;
         ultimaTentativa: Date;
         ultimoDetalhe: string | null;
-        driveId: string | null;
+        fileName: string | null;
         dataReferencia: Date | null;
       }[]
     >`
@@ -47,7 +47,7 @@ export class BlNaoEncontradoRepository {
         q.tentativasConsulta,
         q.ultimaTentativa,
         q.ultimoDetalhe,
-        q.driveId,
+        q.fileName,
         q.dataReferencia
       FROM (
         SELECT
@@ -61,7 +61,7 @@ export class BlNaoEncontradoRepository {
           ) AS tentativasConsulta,
           lc.ExecutadoEm AS ultimaTentativa,
           lc.Detalhe AS ultimoDetalhe,
-          m.DriveId AS driveId,
+          m.FileName AS fileName,
           COALESCE(m.OnboardDate, m.ArrivalDate) AS dataReferencia
         FROM BL_Master m
         INNER JOIN LatestConsulta lc ON lc.BlMasterId = m.Id AND lc.rn = 1
@@ -80,7 +80,7 @@ export class BlNaoEncontradoRepository {
           ) AS tentativasConsulta,
           lc.ExecutadoEm AS ultimaTentativa,
           lc.Detalhe AS ultimoDetalhe,
-          h.DriveId AS driveId,
+          h.FileName AS fileName,
           COALESCE(h.IssueDate, GETDATE()) AS dataReferencia
         FROM BL_House h
         INNER JOIN LatestConsulta lc ON lc.BlHouseId = h.Id AND lc.rn = 1
@@ -96,7 +96,7 @@ export class BlNaoEncontradoRepository {
       tentativasConsulta: Number(row.tentativasConsulta),
       ultimaTentativa: row.ultimaTentativa,
       ultimoDetalhe: row.ultimoDetalhe,
-      driveId: row.driveId,
+      fileName: row.fileName,
       dataReferencia: row.dataReferencia,
     }));
   }
@@ -107,17 +107,21 @@ export class BlNaoEncontradoRepository {
     >`
       SELECT 'Master' AS tipo, m.Id AS blId
       FROM BL_Master m
+      LEFT JOIN BL_Workflow w ON w.BlMasterId = m.Id
       WHERE NOT EXISTS (
         SELECT 1 FROM BL_ConsultaGlobalSys c WHERE c.BlMasterId = m.Id
       )
+      AND (w.Id IS NULL OR w.Status NOT IN ('finalizado', 'divergencia'))
 
       UNION ALL
 
       SELECT 'House' AS tipo, h.Id AS blId
       FROM BL_House h
+      LEFT JOIN BL_Workflow w ON w.BlHouseId = h.Id
       WHERE NOT EXISTS (
         SELECT 1 FROM BL_ConsultaGlobalSys c WHERE c.BlHouseId = h.Id
       )
+      AND (w.Id IS NULL OR w.Status NOT IN ('finalizado', 'divergencia'))
     `;
 
     return rows.map((row) => ({

@@ -184,7 +184,7 @@ export default function BLDatabase() {
                         <Field label="Volumes Total" value={String(selectedMaster.volumesTotal)} />
                       </div>
                       <div className="mt-4 rounded-lg bg-secondary/50 p-3">
-                        <p className="text-[11px] text-muted-foreground">Arquivo de origem (OneDrive)</p>
+                        <p className="text-[11px] text-muted-foreground">Arquivo de origem</p>
                         <p className="text-xs font-mono text-primary-800 mt-1">{selectedMaster.origemArquivo}</p>
                       </div>
                     </TabsContent>

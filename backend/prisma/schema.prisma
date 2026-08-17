@@ -62,8 +62,8 @@ model BlMaster {
   GrossWeight              Decimal?  @db.Decimal(18, 3)
   VolumeMeasure            Decimal?  @db.Decimal(18, 3)
   Status                   Boolean   @default(false, map: "DF_BL_Master_Status")
-  ItemId                   String?   @db.NVarChar(255)
-  DriveId                  String?   @db.NVarChar(255)
+  /// Nome do arquivo local em /files (n8n grava o binário pós-OCR)
+  FileName                 String?   @db.NVarChar(255)
 
   houses              BlHouse[]
   camposRevisao       BlCampoRevisao[]
@@ -124,8 +124,8 @@ model BlHouse {
   ContainerGWT            Decimal?  @db.Decimal(18, 3)
   ContainerCBM            Decimal?  @db.Decimal(18, 3)
   Status                  Boolean   @default(false, map: "DF_BL_House_Status")
-  ItemId                  String?   @db.NVarChar(255)
-  DriveId                 String?   @db.NVarChar(255)
+  /// Nome do arquivo local em /files (n8n grava o binário pós-OCR)
+  FileName                String?   @db.NVarChar(255)
 
   master             BlMaster?              @relation(fields: [BLMasterId], references: [Id], onDelete: NoAction, onUpdate: NoAction, map: "FK_BL_House_BL_Master")
   cargos             BlHouseCargo[]

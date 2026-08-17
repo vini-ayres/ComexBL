@@ -57,7 +57,10 @@ export function Topbar({ onMenuClick, title }: { onMenuClick?: () => void; title
               <Settings className="h-4 w-4" /> Administração
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={logout} className="text-danger-600 focus:text-danger-700 focus:bg-danger-50">
+            <DropdownMenuItem
+              onClick={() => void logout().then(() => navigate("/login"))}
+              className="text-danger-600 focus:text-danger-700 focus:bg-danger-50"
+            >
               <LogOut className="h-4 w-4" /> Sair
             </DropdownMenuItem>
           </DropdownMenuContent>

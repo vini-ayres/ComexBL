@@ -95,9 +95,9 @@ export class GlobalSysConsultaService {
 
   /**
    * BLs ingeridos pelo OCR (n8n) ainda sem tentativa no GlobalSys.
-   * Consulta automaticamente ao abrir a fila de BL não encontrado.
+   * Consulta a existência do número antes de qualquer etapa operacional.
    */
-  private async consultPendingDocuments(): Promise<void> {
+  async consultPendingDocuments(): Promise<void> {
     const pending = await this.localRepository.findDocumentsPendingConsulta();
 
     if (pending.length === 0) {

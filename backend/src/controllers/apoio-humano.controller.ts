@@ -27,6 +27,7 @@ export class ApoioHumanoController {
       String(req.params.tipo),
       blId,
       payload,
+      req.authUser?.id,
     );
 
     res.json(result);

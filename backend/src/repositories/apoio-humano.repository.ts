@@ -19,18 +19,37 @@ export interface SaveApoioHumanoParams {
 export class ApoioHumanoRepository {
   async findQueueCandidates(): Promise<ApoioHumanoQueueEntry[]> {
     const rows = await prisma.$queryRaw<{ tipo: string; Id: number }[]>`
+      WITH LatestConsulta AS (
+        SELECT
+          c.BlMasterId,
+          c.BlHouseId,
+          c.Sucesso,
+          ROW_NUMBER() OVER (
+            PARTITION BY
+              CASE
+                WHEN c.BlMasterId IS NOT NULL THEN CONCAT('M', c.BlMasterId)
+                ELSE CONCAT('H', c.BlHouseId)
+              END
+            ORDER BY c.ExecutadoEm DESC
+          ) AS rn
+        FROM BL_ConsultaGlobalSys c
+      )
       SELECT tipo, Id FROM (
         SELECT 'Master' AS tipo, m.Id
         FROM BL_Master m
-        LEFT JOIN BL_Workflow w ON w.BlMasterId = m.Id
-        WHERE w.Id IS NULL OR w.Status IN ('apoio_humano', 'processando')
+        INNER JOIN BL_Workflow w ON w.BlMasterId = m.Id
+        INNER JOIN LatestConsulta lc ON lc.BlMasterId = m.Id AND lc.rn = 1
+        WHERE w.Status IN ('apoio_humano', 'processando')
+          AND lc.Sucesso = 1
 
         UNION ALL
 
         SELECT 'House' AS tipo, h.Id
         FROM BL_House h
-        LEFT JOIN BL_Workflow w ON w.BlHouseId = h.Id
-        WHERE w.Id IS NULL OR w.Status IN ('apoio_humano', 'processando')
+        INNER JOIN BL_Workflow w ON w.BlHouseId = h.Id
+        INNER JOIN LatestConsulta lc ON lc.BlHouseId = h.Id AND lc.rn = 1
+        WHERE w.Status IN ('apoio_humano', 'processando')
+          AND lc.Sucesso = 1
       ) q
       ORDER BY Id
     `;
@@ -39,6 +58,29 @@ export class ApoioHumanoRepository {
       tipo: row.tipo as 'Master' | 'House',
       id: row.Id,
     }));
+  }
+
+  async hasLatestSuccessfulConsulta(
+    tipo: 'Master' | 'House',
+    blId: number,
+  ): Promise<boolean> {
+    const rows =
+      tipo === 'Master'
+        ? await prisma.$queryRaw<{ Sucesso: boolean | number }[]>`
+            SELECT TOP 1 c.Sucesso
+            FROM BL_ConsultaGlobalSys c
+            WHERE c.BlMasterId = ${blId}
+            ORDER BY c.ExecutadoEm DESC
+          `
+        : await prisma.$queryRaw<{ Sucesso: boolean | number }[]>`
+            SELECT TOP 1 c.Sucesso
+            FROM BL_ConsultaGlobalSys c
+            WHERE c.BlHouseId = ${blId}
+            ORDER BY c.ExecutadoEm DESC
+          `;
+
+    const sucesso = rows[0]?.Sucesso;
+    return sucesso === true || sucesso === 1;
   }
 
   async findRevisoesByMasterIds(ids: number[]) {

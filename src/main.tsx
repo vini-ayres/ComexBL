@@ -3,7 +3,7 @@ import ReactDOM from "react-dom/client"
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom"
 import { Toaster } from "sonner"
 import { AuthProvider } from "@/hooks/useAuth"
-import { ProtectedRoute } from "@/components/layout/ProtectedRoute"
+import { ProtectedRoute, PermissionRoute } from "@/components/layout/ProtectedRoute"
 import { AppShell } from "@/components/layout/AppShell"
 import { TooltipProvider } from "@/components/ui/tooltip"
 
@@ -15,10 +15,8 @@ import Divergencia from "@/pages/Divergencia"
 import ProcessoFinalizado from "@/pages/ProcessoFinalizado"
 import Usuarios from "@/pages/admin/Usuarios"
 import RBAC from "@/pages/admin/RBAC"
-import Auditoria from "@/pages/admin/Auditoria"
 import BLDatabase from "@/pages/admin/BLDatabase"
 import LdapConfigPage from "@/pages/admin/LdapConfig"
-import OneDriveConfigPage from "@/pages/admin/OneDriveConfig"
 import DatabaseConfigPage from "@/pages/admin/DatabaseConfig"
 
 import "./index.css"
@@ -42,13 +40,11 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
               <Route path="/apoio-humano" element={<ApoioHumano />} />
               <Route path="/divergencia" element={<Divergencia />} />
               <Route path="/processo-finalizado" element={<ProcessoFinalizado />} />
-              <Route path="/admin/usuarios" element={<Usuarios />} />
-              <Route path="/admin/rbac" element={<RBAC />} />
-              <Route path="/admin/auditoria" element={<Auditoria />} />
-              <Route path="/admin/bl-database" element={<BLDatabase />} />
-              <Route path="/admin/ldap" element={<LdapConfigPage />} />
-              <Route path="/admin/onedrive" element={<OneDriveConfigPage />} />
-              <Route path="/admin/banco-dados" element={<DatabaseConfigPage />} />
+              <Route path="/admin/bl-database" element={<PermissionRoute permission="visualizar_bl"><BLDatabase /></PermissionRoute>} />
+              <Route path="/admin/usuarios" element={<PermissionRoute permission="administrar_usuarios"><Usuarios /></PermissionRoute>} />
+              <Route path="/admin/rbac" element={<PermissionRoute permission="administrar_usuarios"><RBAC /></PermissionRoute>} />
+              <Route path="/admin/ldap" element={<PermissionRoute permission="configurar_integracoes"><LdapConfigPage /></PermissionRoute>} />
+              <Route path="/admin/banco-dados" element={<PermissionRoute permission="configurar_integracoes"><DatabaseConfigPage /></PermissionRoute>} />
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

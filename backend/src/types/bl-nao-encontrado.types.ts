@@ -3,7 +3,10 @@ import type { PaginatedResult } from './bl.types.js';
 export interface BlNaoEncontradoDocumentoDto {
   nome: string;
   paginas: number;
+  /** Caminho lógico para exibição, ex.: files/MBL-123.pdf */
   origemPath: string;
+  /** Nome do arquivo em /files (null se ainda não associado) */
+  fileName: string | null;
 }
 
 export interface BlNaoEncontradoListItemDto {
@@ -37,6 +40,6 @@ export interface BlNaoEncontradoQueueRow {
   tentativasConsulta: number;
   ultimaTentativa: Date;
   ultimoDetalhe: string | null;
-  driveId: string | null;
+  fileName: string | null;
   dataReferencia: Date | null;
 }

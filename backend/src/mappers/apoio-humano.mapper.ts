@@ -81,14 +81,18 @@ function buildCampo(id: string, label: string, rawValue: string): CampoExtraidoD
 
 function buildDocumento(
   numeroBl: string,
-  driveId: string | null,
+  fileName: string | null,
 ): ApoioHumanoDocumentoDto {
-  const origemPath = driveId ? `/BLs/${driveId}` : '/BLs/pendentes';
+  const nome = fileName?.trim() || `${numeroBl}_original.pdf`;
+  const origemPath = fileName?.trim()
+    ? `files/${fileName.trim()}`
+    : 'files/pendentes';
 
   return {
-    nome: `${numeroBl}_original.pdf`,
+    nome,
     paginas: 1,
     origemPath,
+    fileName: fileName?.trim() || null,
   };
 }
 
@@ -149,8 +153,9 @@ export function mapMasterApoioHumano(master: BlMaster): {
       numeroBl: master.MasterNumber,
       navio: master.VesselName ?? '-',
       viagem: master.Voyage ?? '-',
+      blVersion: master.BlVersion,
     },
-    documento: buildDocumento(master.MasterNumber, master.DriveId),
+    documento: buildDocumento(master.MasterNumber, master.FileName),
     campos: mapScalarCampos(master, MASTER_SCALAR_FIELDS),
   };
 }
@@ -173,8 +178,9 @@ export function mapHouseApoioHumano(
       numeroBl: house.HouseNumber,
       navio: '-',
       viagem: '-',
+      blVersion: house.BlVersion,
     },
-    documento: buildDocumento(house.HouseNumber, house.DriveId),
+    documento: buildDocumento(house.HouseNumber, house.FileName),
     campos: [
       ...mapScalarCampos(house, HOUSE_SCALAR_FIELDS),
       ...mapCargoCampos(relations.cargos),

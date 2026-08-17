@@ -22,6 +22,10 @@ backend/.env
 !**/.env.example
 !.env.*.example
 
+# OCR binary files (n8n → local preview)
+files/*
+!files/.gitkeep
+
 # Logs
 logs/
 *.log
