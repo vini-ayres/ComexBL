@@ -30,6 +30,7 @@ const kpiTones = ["info", "danger", "warning", "success", "primary"] as const
 const statusRouteMap: Record<BLStatus, string> = {
   nao_encontrado: "/bl-nao-encontrado",
   apoio_humano: "/apoio-humano",
+  conferencia_house_master: "/conferencia-house-master",
   divergencia: "/divergencia",
   finalizado: "/processo-finalizado",
   processando: "/",
@@ -259,6 +260,7 @@ export default function Dashboard() {
                 <SelectItem value="todos">Todos os status</SelectItem>
                 <SelectItem value="divergencia">Divergência</SelectItem>
                 <SelectItem value="apoio_humano">Apoio Humano</SelectItem>
+                <SelectItem value="conferencia_house_master">Conferência House/Master</SelectItem>
                 <SelectItem value="processando">Processando</SelectItem>
                 <SelectItem value="finalizado">Finalizado</SelectItem>
                 <SelectItem value="nao_encontrado">Não Encontrado</SelectItem>

@@ -25,6 +25,7 @@ const responsaveis = ["Ana Ribeiro", "Carlos Mendes", "Fernanda Lima", "João Pe
 const pendencias: Record<string, string[]> = {
   divergencia: ["Peso divergente Master x GlobalSys", "Container não localizado no GlobalSys", "Consignatário divergente"],
   apoio_humano: ["Campo ilegível no documento", "Baixa confiança OCR (< 60%)", "Múltiplos containers não reconhecidos"],
+  conferencia_house_master: ["Peso House × Master divergente", "Volume House × Master divergente", "Embalagem House × Master divergente"],
   processando: ["Aguardando consulta GlobalSys", "Em comparação automática", "Extração em andamento"],
   finalizado: ["Nenhuma pendência", "Validado e finalizado"],
   nao_encontrado: ["BL inexistente no GlobalSys", "Aguardando associação manual"],
@@ -35,7 +36,7 @@ function pick<T>(arr: T[], seed: number): T {
 }
 
 function genBLList(count: number): BLListItem[] {
-  const statuses: BLListItem["status"][] = ["divergencia", "apoio_humano", "processando", "finalizado", "nao_encontrado"]
+  const statuses: BLListItem["status"][] = ["divergencia", "apoio_humano", "conferencia_house_master", "processando", "finalizado", "nao_encontrado"]
   const items: BLListItem[] = []
   for (let i = 0; i < count; i++) {
     const status = pick(statuses, i)

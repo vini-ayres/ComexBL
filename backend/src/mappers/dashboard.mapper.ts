@@ -9,6 +9,7 @@ import type {
 const DEFAULT_PENDENCIA: Record<BlStatus, string> = {
   divergencia: 'Divergência pendente de revisão',
   apoio_humano: 'Aguardando revisão humana',
+  conferencia_house_master: 'Aguardando conferência House × Master',
   processando: 'Aguardando processamento',
   finalizado: 'Nenhuma pendência',
   nao_encontrado: 'BL não localizado no GlobalSys',

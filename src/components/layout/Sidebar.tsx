@@ -1,6 +1,6 @@
 import { NavLink } from "react-router-dom"
 import {
-  LayoutDashboard, FileWarning, UserCog, GitCompareArrows, CheckCircle2,
+  LayoutDashboard, FileWarning, UserCog, Scale, GitCompareArrows, CheckCircle2,
   Users, ShieldCheck, Settings, Network, Database,
   ChevronLeft, ChevronRight, Ship,
 } from "lucide-react"
@@ -28,6 +28,7 @@ const sections: NavSection[] = [
       { to: "/", label: "Dashboard", icon: LayoutDashboard, permissions: ["visualizar_bl"] },
       { to: "/bl-nao-encontrado", label: "BL Não Encontrado", icon: FileWarning, permissions: ["visualizar_bl"] },
       { to: "/apoio-humano", label: "Apoio Humano", icon: UserCog, permissions: ["visualizar_bl"] },
+      { to: "/conferencia-house-master", label: "Conferência House/Master", icon: Scale, permissions: ["visualizar_bl"] },
       { to: "/divergencia", label: "Divergências", icon: GitCompareArrows, permissions: ["visualizar_bl"] },
       { to: "/processo-finalizado", label: "Processos Finalizados", icon: CheckCircle2, permissions: ["visualizar_bl"] },
       { to: "/admin/bl-database", label: "BL Master / House", icon: Database, permissions: ["visualizar_bl"] },

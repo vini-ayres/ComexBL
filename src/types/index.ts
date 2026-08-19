@@ -2,7 +2,7 @@
 // Tipos centrais do domínio Comex / BL
 // ============================================================
 
-export type BLStatus = "divergencia" | "apoio_humano" | "processando" | "finalizado" | "nao_encontrado"
+export type BLStatus = "divergencia" | "apoio_humano" | "conferencia_house_master" | "processando" | "finalizado" | "nao_encontrado"
 
 export type BLTipo = "Master" | "House"
 

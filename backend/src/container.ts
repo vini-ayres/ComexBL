@@ -6,6 +6,10 @@ import { blDivergenciaCampoRepository } from './repositories/bl-divergencia-camp
 
 import { blHistoricoAlteracaoRepository } from './repositories/bl-historico-alteracao.repository.js';
 
+import { blConferenciaRepository } from './repositories/bl-conferencia.repository.js';
+
+import { blConferenciaCampoRepository } from './repositories/bl-conferencia-campo.repository.js';
+
 import {
 
   blDivergenciaRepository,
@@ -34,6 +38,8 @@ import { DashboardService } from './services/dashboard.service.js';
 
 import { DivergenciaService } from './services/divergencia.service.js';
 
+import { ConferenciaHouseMasterService } from './services/conferencia-house-master.service.js';
+
 import { GlobalSysConsultaService } from './services/globalsys-consulta.service.js';
 
 import { GlobalSysService } from './services/globalsys.service.js';
@@ -44,9 +50,13 @@ import { processoService } from './services/processo.service.js';
 
 import { WorkflowService } from './services/workflow.service.js';
 
+import { BlLotService } from './services/bl-lot.service.js';
+
 import { relationshipValidator } from './validators/relationship-validator.js';
 
 import { env } from './config/env.js';
+
+import { blXmlDispatchRepository } from './repositories/bl-xml-dispatch.repository.js';
 
 
 
@@ -57,6 +67,8 @@ export const globalSysXmlDispatchService = new GlobalSysXmlDispatchService(
   blHouseRepository,
 
   blWorkflowRepository,
+
+  blXmlDispatchRepository,
 
   relationshipValidator,
 
@@ -158,6 +170,35 @@ export const blService = new BlService(
 
 );
 
+export const blLotService = new BlLotService(
+  blMasterRepository,
+  blHouseRepository,
+  blWorkflowRepository,
+  blXmlDispatchRepository,
+  blHistoricoAlteracaoRepository,
+  globalSysXmlDispatchService,
+);
+
+
+
+export const conferenciaHouseMasterService = new ConferenciaHouseMasterService(
+
+  blMasterRepository,
+
+  blHouseRepository,
+
+  blConferenciaRepository,
+
+  blConferenciaCampoRepository,
+
+  blHistoricoAlteracaoRepository,
+
+  workflowService,
+
+  divergenciaService,
+
+);
+
 
 
 export const apoioHumanoService = new ApoioHumanoService(
@@ -166,7 +207,7 @@ export const apoioHumanoService = new ApoioHumanoService(
 
   workflowService,
 
-  divergenciaService,
+  conferenciaHouseMasterService,
 
   globalSysConsultaService,
 

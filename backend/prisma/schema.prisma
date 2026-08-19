@@ -72,6 +72,8 @@ model BlMaster {
   divergencias        BlDivergencia[]
   processoEtapas      BlProcessoEtapa[]
   consultasGlobalSys  BlConsultaGlobalSys[]
+  xmlDispatch         BlXmlDispatch?
+  conferencias        BlConferencia[]
 
   @@index([ContainerNumber], map: "IX_BL_Master_ContainerNumber")
   @@index([ContainerNumber, BlVersion], map: "IX_BL_Master_ContainerNumber_BlVersion")
@@ -136,6 +138,7 @@ model BlHouse {
   divergencias       BlDivergencia[]
   processoEtapas     BlProcessoEtapa[]
   consultasGlobalSys BlConsultaGlobalSys[]
+  conferencias       BlConferencia[]
 
   @@index([BLMasterId], map: "IX_BL_House_BLMasterId")
   @@index([ContainerNumber], map: "IX_BL_House_ContainerNumber")
@@ -180,7 +183,23 @@ model BlHouseNcm {
 // Domínio operacional BL (aplicação ComexBL)
 // ---------------------------------------------------------------------------
 
-/// Status operacional: apoio_humano | divergencia | processando | finalizado | nao_encontrado
+/// Envio do XML consolidado GlobalSys (um registro por Master+versão, via BlMasterId).
+model BlXmlDispatch {
+  Id           Int       @id(map: "PK_BL_XmlDispatch") @default(autoincrement())
+  BlMasterId   Int       @unique(map: "UQ_BL_XmlDispatch_BlMasterId")
+  Status       String    @db.VarChar(20)
+  DispatchedAt DateTime?
+  LastError    String?   @db.NVarChar(1000)
+  CreatedAt    DateTime  @default(now()) @map("CreatedAt")
+  UpdatedAt    DateTime  @updatedAt @map("UpdatedAt")
+
+  master BlMaster @relation(fields: [BlMasterId], references: [Id], onDelete: Cascade, onUpdate: NoAction, map: "FK_BL_XmlDispatch_BL_Master")
+
+  @@index([Status], map: "IX_BL_XmlDispatch_Status")
+  @@map("BL_XmlDispatch")
+}
+
+/// Status operacional: apoio_humano | conferencia_house_master | divergencia | processando | finalizado | nao_encontrado
 model BlWorkflow {
   Id                 Int      @id(map: "PK_BL_Workflow") @default(autoincrement())
   BlMasterId         Int?
@@ -292,6 +311,47 @@ model BlDivergenciaCampo {
   @@map("BL_DivergenciaCampo")
 }
 
+/// Conferência de peso, volume e embalagem entre House e Master (DRAFT ou FINAL)
+model BlConferencia {
+  Id               Int       @id(map: "PK_BL_Conferencia") @default(autoincrement())
+  BlMasterId       Int?
+  BlHouseId        Int?
+  Status           String    @default("pendente") @db.VarChar(20)
+  ResolvedByUserId Int?
+  ResolvedAt       DateTime?
+  CreatedAt        DateTime  @default(now()) @map("CreatedAt")
+  UpdatedAt        DateTime  @updatedAt @map("UpdatedAt")
+
+  master     BlMaster?             @relation(fields: [BlMasterId], references: [Id], onDelete: Cascade, onUpdate: NoAction, map: "FK_BL_Conferencia_BL_Master")
+  house      BlHouse?              @relation(fields: [BlHouseId], references: [Id], onDelete: Cascade, onUpdate: NoAction, map: "FK_BL_Conferencia_BL_House")
+  resolvedBy AppUser?              @relation(fields: [ResolvedByUserId], references: [Id], onDelete: NoAction, onUpdate: NoAction, map: "FK_BL_Conferencia_APP_User")
+  campos     BlConferenciaCampo[]
+
+  @@index([BlMasterId], map: "IX_BL_Conferencia_BlMasterId")
+  @@index([BlHouseId], map: "IX_BL_Conferencia_BlHouseId")
+  @@index([Status], map: "IX_BL_Conferencia_Status")
+  @@map("BL_Conferencia")
+}
+
+/// Campo comparado na conferência House × Master (peso, volume, embalagem)
+model BlConferenciaCampo {
+  Id              Int     @id(map: "PK_BL_ConferenciaCampo") @default(autoincrement())
+  BlConferenciaId Int
+  CampoKey        String  @db.VarChar(80)
+  CampoLabel      String  @db.NVarChar(200)
+  ValorHouse      String  @db.NVarChar(500)
+  ValorMaster     String  @db.NVarChar(500)
+  ValorManual     String? @db.NVarChar(500)
+  Status          String  @db.VarChar(30)
+  Categoria       String  @db.VarChar(20)
+
+  conferencia BlConferencia @relation(fields: [BlConferenciaId], references: [Id], onDelete: Cascade, onUpdate: NoAction, map: "FK_BL_ConferenciaCampo_BL_Conferencia")
+
+  @@unique([BlConferenciaId, CampoKey], map: "UQ_BL_ConferenciaCampo_Conferencia_CampoKey")
+  @@index([Status], map: "IX_BL_ConferenciaCampo_Status")
+  @@map("BL_ConferenciaCampo")
+}
+
 /// Timeline do processo (Dashboard / Processo Finalizado)
 model BlProcessoEtapa {
   Id          Int       @id(map: "PK_BL_ProcessoEtapa") @default(autoincrement())
@@ -354,6 +414,7 @@ model AppUser {
   camposRevisao        BlCampoRevisao[]
   historicoAlteracoes  BlHistoricoAlteracao[]
   divergenciasResolvidas BlDivergencia[]
+  conferenciasResolvidas BlConferencia[]
   auditLogs            AppAuditLog[]
   integrationUpdates   AppIntegrationConfig[]
 

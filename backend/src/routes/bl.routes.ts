@@ -6,9 +6,13 @@ import { BlController } from '../controllers/bl.controller.js';
 
 import { BlFinalController } from '../controllers/bl-final.controller.js';
 
+import { BlLotController } from '../controllers/bl-lot.controller.js';
+
 import { BlNaoEncontradoController } from '../controllers/bl-nao-encontrado.controller.js';
 
 import { BlVersionController } from '../controllers/bl-version.controller.js';
+
+import { ConferenciaHouseMasterController } from '../controllers/conferencia-house-master.controller.js';
 
 import { DashboardController } from '../controllers/dashboard.controller.js';
 
@@ -20,6 +24,8 @@ import { ProcessoController } from '../controllers/processo.controller.js';
 
 import { WorkflowController } from '../controllers/workflow.controller.js';
 
+import { requirePermission } from '../middlewares/auth.middleware.js';
+
 import {
 
   apoioHumanoService,
@@ -27,6 +33,10 @@ import {
   blFinalService,
 
   blService,
+
+  blLotService,
+
+  conferenciaHouseMasterService,
 
   dashboardService,
 
@@ -52,6 +62,10 @@ const blFinalController = new BlFinalController(blFinalService);
 
 const apoioHumanoController = new ApoioHumanoController(apoioHumanoService);
 
+const conferenciaHouseMasterController = new ConferenciaHouseMasterController(
+  conferenciaHouseMasterService,
+);
+
 const divergenciaController = new DivergenciaController(divergenciaService);
 
 const globalSysController = new GlobalSysController(globalSysService);
@@ -61,6 +75,8 @@ const workflowController = new WorkflowController(workflowService);
 const processoController = new ProcessoController(processoService);
 
 const dashboardController = new DashboardController(dashboardService);
+
+const blLotController = new BlLotController(blLotService);
 
 const blNaoEncontradoController = new BlNaoEncontradoController(
 
@@ -89,6 +105,39 @@ blRoutes.get('/dashboard/items', dashboardController.listItems);
 blRoutes.get('/apoio-humano', apoioHumanoController.getQueueItem);
 
 blRoutes.post('/apoio-humano/:tipo/:id/campos', apoioHumanoController.saveCampos);
+
+
+
+// Conferência House × Master (peso, volume, embalagem)
+
+blRoutes.get('/conferencia-house-master', conferenciaHouseMasterController.getQueueItem);
+
+blRoutes.patch('/conferencia-house-master/:id/resolve', conferenciaHouseMasterController.resolve);
+
+blRoutes.patch(
+  '/conferencia-house-master/:id/campos/:campoKey/resolve',
+  conferenciaHouseMasterController.resolveCampo,
+);
+
+blRoutes.get(
+  '/conferencia-house-master/by-id/:id',
+  conferenciaHouseMasterController.getById,
+);
+
+blRoutes.get(
+  '/conferencia-house-master/:tipo/:documentNumber/latest',
+  conferenciaHouseMasterController.getLatest,
+);
+
+blRoutes.get(
+  '/conferencia-house-master/:tipo/:documentNumber/compare',
+  conferenciaHouseMasterController.compare,
+);
+
+blRoutes.post(
+  '/conferencia-house-master/:tipo/:documentNumber/compare-and-persist',
+  conferenciaHouseMasterController.compareAndPersist,
+);
 
 
 
@@ -268,11 +317,35 @@ blRoutes.get(
 
 
 
-// BL Database (legado por Id)
+// BL Database (legado por Id) — lote Master/House + XML consolidado
 
-blRoutes.get('/masters', blController.listMasters);
+blRoutes.get('/masters', blLotController.listMasters);
 
-blRoutes.get('/masters/:id', blController.getMasterById);
+blRoutes.get('/masters/:id', blLotController.getMasterById);
+
+blRoutes.patch(
+  '/masters/:id/hbl-count',
+  requirePermission('editar_bl'),
+  blLotController.updateHblCount,
+);
+
+blRoutes.post(
+  '/masters/:id/xml-dispatch',
+  requirePermission('editar_bl'),
+  blLotController.dispatchXml,
+);
+
+blRoutes.post(
+  '/masters/:id/houses/:houseId/link',
+  requirePermission('editar_bl'),
+  blLotController.linkHouse,
+);
+
+blRoutes.post(
+  '/masters/:id/houses/:houseId/unlink',
+  requirePermission('editar_bl'),
+  blLotController.unlinkHouse,
+);
 
 blRoutes.get('/houses', blController.listHouses);
 

@@ -11,6 +11,7 @@ import Login from "@/pages/Login"
 import Dashboard from "@/pages/Dashboard"
 import BLNaoEncontrado from "@/pages/BLNaoEncontrado"
 import ApoioHumano from "@/pages/ApoioHumano"
+import ConferenciaHouseMaster from "@/pages/ConferenciaHouseMaster"
 import Divergencia from "@/pages/Divergencia"
 import ProcessoFinalizado from "@/pages/ProcessoFinalizado"
 import Usuarios from "@/pages/admin/Usuarios"
@@ -38,6 +39,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
               <Route path="/" element={<Dashboard />} />
               <Route path="/bl-nao-encontrado" element={<BLNaoEncontrado />} />
               <Route path="/apoio-humano" element={<ApoioHumano />} />
+              <Route path="/conferencia-house-master" element={<ConferenciaHouseMaster />} />
               <Route path="/divergencia" element={<Divergencia />} />
               <Route path="/processo-finalizado" element={<ProcessoFinalizado />} />
               <Route path="/admin/bl-database" element={<PermissionRoute permission="visualizar_bl"><BLDatabase /></PermissionRoute>} />

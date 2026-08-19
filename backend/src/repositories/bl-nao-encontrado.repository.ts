@@ -111,7 +111,7 @@ export class BlNaoEncontradoRepository {
       WHERE NOT EXISTS (
         SELECT 1 FROM BL_ConsultaGlobalSys c WHERE c.BlMasterId = m.Id
       )
-      AND (w.Id IS NULL OR w.Status NOT IN ('finalizado', 'divergencia'))
+      AND (w.Id IS NULL OR w.Status NOT IN ('finalizado', 'divergencia', 'conferencia_house_master'))
 
       UNION ALL
 
@@ -121,7 +121,7 @@ export class BlNaoEncontradoRepository {
       WHERE NOT EXISTS (
         SELECT 1 FROM BL_ConsultaGlobalSys c WHERE c.BlHouseId = h.Id
       )
-      AND (w.Id IS NULL OR w.Status NOT IN ('finalizado', 'divergencia'))
+      AND (w.Id IS NULL OR w.Status NOT IN ('finalizado', 'divergencia', 'conferencia_house_master'))
     `;
 
     return rows.map((row) => ({

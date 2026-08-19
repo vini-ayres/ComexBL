@@ -1,6 +1,7 @@
 export type BlStatus =
   | 'divergencia'
   | 'apoio_humano'
+  | 'conferencia_house_master'
   | 'processando'
   | 'finalizado'
   | 'nao_encontrado';

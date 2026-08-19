@@ -111,6 +111,13 @@ export class BlMasterRepository {
     return prisma.blMaster.count();
   }
 
+  async updateHblCount(id: number, hblCount: number): Promise<BlMaster> {
+    return prisma.blMaster.update({
+      where: { Id: id },
+      data: { HBLCount: hblCount },
+    });
+  }
+
   private buildWhere(filters: BlMasterListFilters): Prisma.BlMasterWhereInput | undefined {
     const conditions: Prisma.BlMasterWhereInput[] = [];
 

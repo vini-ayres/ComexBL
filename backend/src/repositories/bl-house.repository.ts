@@ -53,6 +53,13 @@ export class BlHouseRepository {
     });
   }
 
+  async unlinkFromMaster(houseId: number): Promise<BlHouse> {
+    return prisma.blHouse.update({
+      where: { Id: houseId },
+      data: { BLMasterId: null },
+    });
+  }
+
   async findByMasterIdAndVersion(
     masterId: number,
     blVersion: BlVersion,
@@ -138,6 +145,17 @@ export class BlHouseRepository {
   async findByMasterId(masterId: number): Promise<BlHouse[]> {
     return prisma.blHouse.findMany({
       where: { BLMasterId: masterId },
+      orderBy: { HouseNumber: 'asc' },
+    });
+  }
+
+  async findByMasterIds(masterIds: number[]): Promise<BlHouse[]> {
+    if (masterIds.length === 0) {
+      return [];
+    }
+
+    return prisma.blHouse.findMany({
+      where: { BLMasterId: { in: masterIds } },
       orderBy: { HouseNumber: 'asc' },
     });
   }

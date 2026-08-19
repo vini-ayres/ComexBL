@@ -18,6 +18,7 @@ interface DocumentViewerProps {
   /** Versão do BL (DRAFT ou FINAL). Substitui o badge "Original". */
   blVersion?: BlVersion | string | null
   className?: string
+  compact?: boolean
 }
 
 function isPdf(fileName: string): boolean {
@@ -49,6 +50,7 @@ export function DocumentViewer({
   fileName,
   blVersion,
   className,
+  compact = false,
 }: DocumentViewerProps) {
   const [page, setPage] = useState(1)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -163,7 +165,10 @@ export function DocumentViewer({
         </div>
       </div>
 
-      <div className="relative flex-1 min-h-[720px] overflow-auto bg-primary-950/95 p-4 flex items-center justify-center scrollbar-thin">
+      <div className={cn(
+        "relative flex-1 overflow-auto bg-primary-950/95 p-4 flex items-center justify-center scrollbar-thin",
+        compact ? "min-h-[360px]" : "min-h-[720px]",
+      )}>
         {!fileName && (
           <div className="flex flex-col items-center gap-3 text-center text-white/80 px-6">
             <FileText className="h-14 w-14 text-white/30" />
@@ -192,7 +197,7 @@ export function DocumentViewer({
             <iframe
               title={nome}
               src={previewUrl}
-              className="h-full min-h-[720px] w-full rounded-sm bg-white"
+              className={cn("w-full rounded-sm bg-white", compact ? "h-full min-h-[360px]" : "h-full min-h-[720px]")}
               onLoad={() => setLoading(false)}
             />
           </>

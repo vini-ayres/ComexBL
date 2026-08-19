@@ -60,12 +60,13 @@ export class BlHistoricoAlteracaoRepository {
     blMasterId: number | null,
     blHouseId: number | null,
     campoKey: string,
+    acao = 'resolucao_divergencia_campo',
   ): Promise<BlHistoricoAlteracao | null> {
     return prisma.blHistoricoAlteracao.findFirst({
       where: {
         BlMasterId: blMasterId,
         BlHouseId: blHouseId,
-        Acao: 'resolucao_divergencia_campo',
+        Acao: acao,
         Campo: { startsWith: `${campoKey}|` },
       },
       orderBy: { CreatedAt: 'desc' },

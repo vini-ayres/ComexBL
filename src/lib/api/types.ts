@@ -1,6 +1,7 @@
 export type BlStatus =
   | 'divergencia'
   | 'apoio_humano'
+  | 'conferencia_house_master'
   | 'processando'
   | 'finalizado'
   | 'nao_encontrado'
@@ -13,6 +14,21 @@ export interface ContainerDto {
   volumes: number
 }
 
+export type LotStatus =
+  | 'count_ausente'
+  | 'master_nao_finalizado'
+  | 'aguardando_house'
+  | 'house_nao_finalizado'
+  | 'pronto'
+  | 'xml_enviado'
+  | 'xml_falhou'
+
+export type XmlDispatchUiStatus =
+  | 'nao_enviado'
+  | 'pendente'
+  | 'enviado'
+  | 'falhou'
+
 export interface BlMasterSummaryDto {
   id: number
   numeroBl: string
@@ -23,6 +39,15 @@ export interface BlMasterSummaryDto {
   status: BlStatus
   volumesTotal: number
   createdAt: string
+  blVersion: string
+  hblCount: number | null
+  containerNumber: string | null
+  houseCount: number
+  finalizedHouseCount: number
+  workflowStatus: BlStatus
+  xmlDispatchStatus: XmlDispatchUiStatus
+  lotStatus: LotStatus
+  partlot: boolean
 }
 
 export interface BlMasterDetailDto extends BlMasterSummaryDto {
@@ -34,8 +59,10 @@ export interface BlMasterDetailDto extends BlMasterSummaryDto {
   pesoBrutoTotal: string
   origemArquivo: string
   updatedAt: string
-  containers: ContainerDto[]
   houses: BlHouseSummaryDto[]
+  candidateHouses: BlHouseSummaryDto[]
+  xmlDispatchError: string | null
+  xmlDispatchedAt: string | null
 }
 
 export interface BlHouseSummaryDto {
@@ -45,6 +72,21 @@ export interface BlHouseSummaryDto {
   descricaoMercadoria: string
   status: BlStatus
   volumes: number
+  blVersion?: string
+  containerNumber?: string | null
+  linked?: boolean
+  candidate?: boolean
+}
+
+export interface XmlDispatchEvaluationDto {
+  dispatched: boolean
+  lotStatus: LotStatus
+  reason: string
+  hblCount: number | null
+  linkedCount: number
+  finalizedHouseCount: number
+  masterFinalized: boolean
+  xmlDispatchStatus: XmlDispatchUiStatus
 }
 
 export interface PaginatedResult<T> {
@@ -382,6 +424,132 @@ export interface DivergenciaResolveResponseDto {
   divergencia: DivergenciaLatestDetailDto
   workflow: WorkflowSummaryDto | null
   campos: DivergenciaCampoResolutionDetailDto[]
+}
+
+export type ConferenciaResolutionStrategy =
+  | 'aceitar_house'
+  | 'aceitar_master'
+  | 'manual'
+
+export type ConferenciaCampoStatus =
+  | 'pendente'
+  | 'resolvido_house'
+  | 'resolvido_master'
+  | 'resolvido_manual'
+
+export type ConferenciaCategoria = 'peso' | 'volume' | 'embalagem'
+
+export interface ConferenciaCounterpartDto {
+  masterNumber: string | null
+  houseNumbers: string[]
+  blVersion: BlVersion
+  houseAggregate: boolean
+  missingMaster: boolean
+  missingHouse: boolean
+}
+
+export interface ConferenciaCampoDto {
+  id: number
+  campoKey: string
+  campoLabel: string
+  valorHouse: string
+  valorMaster: string
+  valorManual: string | null
+  status: string
+  categoria: ConferenciaCategoria
+}
+
+export interface ConferenciaLatestDetailDto {
+  id: number
+  documentType: BlDocumentType
+  documentNumber: string
+  status: string
+  createdAt: string
+  updatedAt: string
+  resolvedAt: string | null
+  campos: ConferenciaCampoDto[]
+  comparisonStatus: string
+  comparisonDate: string
+  origin: {
+    left: string
+    right: string
+    label: string
+  }
+  counterpart: ConferenciaCounterpartDto
+  workflow: WorkflowSummaryDto | null
+}
+
+export interface ResolveConferenciaRequestDto {
+  resolutionStrategy: ConferenciaResolutionStrategy
+  manualValues?: Record<string, string>
+  observacao?: string
+  responsavelUserId?: number
+  responsavelNome?: string
+  resolvedAt?: string
+}
+
+export interface ResolveConferenciaCampoRequestDto {
+  resolutionStrategy: ConferenciaResolutionStrategy
+  manualValue?: string
+  observacao?: string
+  responsavelUserId?: number
+  responsavelNome?: string
+  resolvedAt?: string
+}
+
+export interface ConferenciaCampoResolutionDetailDto {
+  campoKey: string
+  campoLabel: string
+  status: string
+  resolutionStrategy: ConferenciaResolutionStrategy | null
+  resolvedValue: string | null
+  valorHouse: string
+  valorMaster: string
+  observacao: string | null
+  responsavelUserId: number | null
+  responsavelNome: string | null
+  resolvedAt: string | null
+}
+
+export interface ConferenciaResolutionSummaryDto {
+  conferenciaId: number
+  status: string
+  totalCampos: number
+  pendingCampos: number
+  resolvedCampos: number
+  allResolved: boolean
+  resolvedAt: string | null
+  resolvedByUserId: number | null
+}
+
+export interface ConferenciaResolveResponseDto {
+  summary: ConferenciaResolutionSummaryDto
+  conferencia: ConferenciaLatestDetailDto
+  workflow: WorkflowSummaryDto | null
+  campos: ConferenciaCampoResolutionDetailDto[]
+}
+
+export interface ConferenciaDocumentoDto {
+  tipo: BlDocumentType
+  numeroBl: string
+  nome: string
+  origemPath: string
+  fileName: string | null
+  blVersion: string
+}
+
+export interface ConferenciaQueueItemDto {
+  conferencia: ConferenciaLatestDetailDto
+  documentos: {
+    master: ConferenciaDocumentoDto | null
+    house: ConferenciaDocumentoDto | null
+  }
+  pagination: {
+    page: number
+    pageSize: number
+    total: number
+    totalPages: number
+  }
 }
 
 export interface ProcessoTimelineEventDto {

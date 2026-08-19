@@ -487,8 +487,9 @@ export class WorkflowService {
 
   assertValidTransition(currentStatus: string, nextStatus: string): void {
     const allowed: Record<string, string[]> = {
-      apoio_humano: ['processando', 'finalizado', 'divergencia', 'nao_encontrado'],
-      processando: ['apoio_humano', 'finalizado', 'divergencia', 'nao_encontrado'],
+      apoio_humano: ['processando', 'finalizado', 'conferencia_house_master', 'divergencia', 'nao_encontrado'],
+      processando: ['apoio_humano', 'conferencia_house_master', 'finalizado', 'divergencia', 'nao_encontrado'],
+      conferencia_house_master: ['processando', 'finalizado', 'divergencia', 'apoio_humano'],
       divergencia: ['processando', 'finalizado'],
       nao_encontrado: ['processando', 'apoio_humano'],
       finalizado: [],

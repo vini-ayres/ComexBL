@@ -1,6 +1,6 @@
 import type { BlHouse, BlMaster } from '@prisma/client';
 import { logger } from '../config/logger.js';
-import { BL_VERSION, isBlVersion } from '../constants/bl-version.constants.js';
+import { isBlVersion } from '../constants/bl-version.constants.js';
 import { AppError, BadRequestError, NotFoundError, UnauthorizedError } from '../errors/AppError.js';
 import {
   hasCamposPendentes,
@@ -20,7 +20,7 @@ import type {
 import type { UpdateWorkflowInput } from '../types/bl-domain.types.js';
 import type { PaginationQuery } from '../types/bl.types.js';
 import { getSkipTake } from '../utils/pagination.js';
-import type { DivergenciaService } from './divergencia.service.js';
+import type { ConferenciaHouseMasterService } from './conferencia-house-master.service.js';
 import type { GlobalSysConsultaService } from './globalsys-consulta.service.js';
 import type { WorkflowService } from './workflow.service.js';
 
@@ -31,7 +31,7 @@ export class ApoioHumanoService {
   constructor(
     private readonly repository: ApoioHumanoRepository,
     private readonly workflowService: WorkflowService,
-    private readonly divergenciaService: DivergenciaService,
+    private readonly conferenciaService: ConferenciaHouseMasterService,
     private readonly globalSysConsultaService: GlobalSysConsultaService,
   ) {}
 
@@ -140,6 +140,7 @@ export class ApoioHumanoService {
       });
 
       const workflowData = this.buildWorkflowAfterApoioHumano(
+        tipo,
         blExists.BlVersion,
         pendentes,
         confianca,
@@ -164,10 +165,11 @@ export class ApoioHumanoService {
           : (blExists as BlHouse).HouseNumber;
       const blVersion = blExists.BlVersion;
 
-      if (pendentes === 0 && blVersion === BL_VERSION.FINAL) {
-        await this.divergenciaService.triggerCanonicalComparison(
+      if (pendentes === 0) {
+        await this.conferenciaService.continueAfterApoioHumano(
           tipo,
           documentNumber,
+          blVersion,
         );
       }
 
@@ -358,10 +360,11 @@ export class ApoioHumanoService {
   }
 
   /**
-   * DRAFT: após revisão humana completa, o processo encerra (sem Divergências).
-   * FINAL: dispara comparação canônica OCR × GlobalSys via triggerCanonicalComparison.
+   * House e Master entram na conferência após a revisão humana.
+   * A comparação só começa quando os dois existirem no mesmo container.
    */
   private buildWorkflowAfterApoioHumano(
+    _tipo: 'Master' | 'House',
     blVersion: string,
     pendentes: number,
     confianca: number,
@@ -376,13 +379,9 @@ export class ApoioHumanoService {
       };
     }
 
-    const isDraft = blVersion === BL_VERSION.DRAFT;
-
     return {
-      status: isDraft ? 'finalizado' : 'processando',
-      pendencia: isDraft
-        ? 'Revisão humana concluída — processo finalizado'
-        : 'Revisão humana concluída',
+      status: 'conferencia_house_master',
+      pendencia: `Revisão humana concluída (${blVersion}) — aguardando par House/Master do mesmo container`,
       responsavelUserId,
       confianca,
     };

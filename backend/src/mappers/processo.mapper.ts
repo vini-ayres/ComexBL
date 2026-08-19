@@ -1,5 +1,6 @@
 import type {
   BlConsultaGlobalSys,
+  BlConferencia,
   BlDivergencia,
   BlHistoricoAlteracao,
   BlProcessoEtapa,
@@ -47,6 +48,7 @@ function mapWorkflowStatusToTimeline(status: string): ProcessoTimelineItemStatus
       return 'erro';
     case 'processando':
     case 'apoio_humano':
+    case 'conferencia_house_master':
       return 'em_andamento';
     default:
       return 'pendente';
@@ -82,12 +84,21 @@ export function mapPersistedProcessoEtapa(
 export function mapHistoricoToTimelineEvent(
   historico: BlHistoricoAlteracao,
 ): ProcessoTimelineEventDto {
-  const isResolucao = historico.Acao.startsWith('resolucao_divergencia');
+  const isResolucaoDivergencia = historico.Acao.startsWith('resolucao_divergencia');
+  const isResolucaoConferencia = historico.Acao.startsWith('resolucao_conferencia');
 
   return {
     id: `historico-${historico.Id}`,
-    eventType: isResolucao ? 'resolucao_divergencia' : 'apoio_humano',
-    titulo: isResolucao ? 'Resolução de divergência' : historico.Acao,
+    eventType: isResolucaoDivergencia
+      ? 'resolucao_divergencia'
+      : isResolucaoConferencia
+        ? 'conferencia_house_master'
+        : 'apoio_humano',
+    titulo: isResolucaoDivergencia
+      ? 'Resolução de divergência'
+      : isResolucaoConferencia
+        ? 'Conferência House/Master'
+        : historico.Acao,
     descricao: `${historico.Campo}: ${historico.ValorDepois}`,
     status: 'concluido',
     occurredAt: historico.CreatedAt.toISOString(),
@@ -116,6 +127,36 @@ export function mapConsultaGlobalSysEvent(
       tentativa: consulta.TentativaNumero,
       sucesso: consulta.Sucesso,
     },
+  };
+}
+
+export function mapConferenciaEvent(
+  conferencia: BlConferencia,
+  kind: 'created' | 'resolved',
+): ProcessoTimelineEventDto {
+  if (kind === 'resolved' && conferencia.ResolvedAt) {
+    return {
+      id: `conferencia-resolved-${conferencia.Id}`,
+      eventType: 'conferencia_house_master',
+      titulo: 'Conferência House/Master resolvida',
+      descricao: `Conferência ${conferencia.Id} marcada como resolvida`,
+      status: 'concluido',
+      occurredAt: conferencia.ResolvedAt.toISOString(),
+      source: 'dinamico',
+    };
+  }
+
+  return {
+    id: `conferencia-created-${conferencia.Id}`,
+    eventType: 'conferencia_house_master',
+    titulo: 'Conferência House/Master',
+    descricao: `Comparação de peso, volume e embalagem (${conferencia.Status})`,
+    status:
+      conferencia.Status === 'resolvido' || conferencia.Status === 'sem_divergencia'
+        ? 'concluido'
+        : 'em_andamento',
+    occurredAt: conferencia.CreatedAt.toISOString(),
+    source: 'dinamico',
   };
 }
 

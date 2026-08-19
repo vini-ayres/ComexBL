@@ -31,6 +31,26 @@ export class BlWorkflowRepository {
     });
   }
 
+  async findByMasterIds(blMasterIds: number[]): Promise<BlWorkflow[]> {
+    if (blMasterIds.length === 0) {
+      return [];
+    }
+
+    return prisma.blWorkflow.findMany({
+      where: { BlMasterId: { in: blMasterIds } },
+    });
+  }
+
+  async findByHouseIds(blHouseIds: number[]): Promise<BlWorkflow[]> {
+    if (blHouseIds.length === 0) {
+      return [];
+    }
+
+    return prisma.blWorkflow.findMany({
+      where: { BlHouseId: { in: blHouseIds } },
+    });
+  }
+
   async create(
     data: Prisma.BlWorkflowCreateInput,
     tx?: Prisma.TransactionClient,

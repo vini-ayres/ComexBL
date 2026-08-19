@@ -7,6 +7,7 @@ const titles: Record<string, string> = {
   "/": "Dashboard Operacional",
   "/bl-nao-encontrado": "BL Não Encontrado no GlobalSys",
   "/apoio-humano": "Apoio Humano",
+  "/conferencia-house-master": "Conferência House × Master",
   "/divergencia": "Divergência BL Final x GlobalSys",
   "/processo-finalizado": "Processo Finalizado",
   "/admin/usuarios": "Usuários",
@@ -33,6 +34,7 @@ export function AppShell() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -8 }}
               transition={{ duration: 0.18 }}
+              className="min-w-0 max-w-full"
             >
               <Outlet />
             </motion.div>

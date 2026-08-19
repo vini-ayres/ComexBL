@@ -5,6 +5,7 @@ import {
   buildFinalRecebidoEvent,
   buildOcrIngestaoEvent,
   mapConsultaGlobalSysEvent,
+  mapConferenciaEvent,
   mapDivergenciaEvent,
   mapHistoricoToTimelineEvent,
   mapProcessoTimelineResponse,
@@ -12,6 +13,7 @@ import {
 } from '../mappers/processo.mapper.js';
 import { apoioHumanoRepository } from '../repositories/apoio-humano.repository.js';
 import { blConsultaGlobalSysRepository } from '../repositories/bl-consulta-globalsys.repository.js';
+import { blConferenciaRepository } from '../repositories/bl-conferencia.repository.js';
 import { blDivergenciaRepository } from '../repositories/bl-divergencia.repository.js';
 import { blHistoricoAlteracaoRepository } from '../repositories/bl-historico-alteracao.repository.js';
 import { blProcessoEtapaRepository } from '../repositories/bl-processo-etapa.repository.js';
@@ -35,6 +37,7 @@ export class ProcessoService {
       persistedEtapas,
       workflow,
       divergencias,
+      conferencias,
       consultas,
       historico,
       revisoes,
@@ -50,6 +53,9 @@ export class ProcessoService {
       documentType === 'Master'
         ? blDivergenciaRepository.findByMasterId(documentContext.recordId)
         : blDivergenciaRepository.findByHouseId(documentContext.recordId),
+      documentType === 'Master'
+        ? blConferenciaRepository.findByMasterId(documentContext.recordId)
+        : blConferenciaRepository.findByHouseId(documentContext.recordId),
       documentType === 'Master'
         ? blConsultaGlobalSysRepository.findByMasterId(documentContext.recordId)
         : blConsultaGlobalSysRepository.findByHouseId(documentContext.recordId),
@@ -90,6 +96,14 @@ export class ProcessoService {
 
     for (const consulta of consultas) {
       dynamicEvents.push(mapConsultaGlobalSysEvent(consulta));
+    }
+
+    for (const conferencia of conferencias) {
+      dynamicEvents.push(mapConferenciaEvent(conferencia, 'created'));
+
+      if (conferencia.ResolvedAt) {
+        dynamicEvents.push(mapConferenciaEvent(conferencia, 'resolved'));
+      }
     }
 
     for (const divergencia of divergencias) {

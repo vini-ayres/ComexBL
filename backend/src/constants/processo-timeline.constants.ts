@@ -2,6 +2,7 @@
 export type ProcessoTimelineEventType =
   | 'ocr_ingestao'
   | 'apoio_humano'
+  | 'conferencia_house_master'
   | 'final_recebido'
   | 'comparacao'
   | 'divergencia'
@@ -22,9 +23,10 @@ export type ProcessoTimelineItemStatus =
 export const DEFAULT_PROCESSO_ETAPAS = [
   { ordem: 1, titulo: 'Ingestão OCR', eventType: 'ocr_ingestao' as const },
   { ordem: 2, titulo: 'Apoio Humano', eventType: 'apoio_humano' as const },
-  { ordem: 3, titulo: 'FINAL recebido', eventType: 'final_recebido' as const },
-  { ordem: 4, titulo: 'Comparação', eventType: 'comparacao' as const },
-  { ordem: 5, titulo: 'Divergências', eventType: 'divergencia' as const },
-  { ordem: 6, titulo: 'Resolução', eventType: 'resolucao_divergencia' as const },
-  { ordem: 7, titulo: 'Processo finalizado', eventType: 'workflow' as const },
+  { ordem: 3, titulo: 'Conferência House/Master', eventType: 'conferencia_house_master' as const },
+  { ordem: 4, titulo: 'FINAL recebido', eventType: 'final_recebido' as const },
+  { ordem: 5, titulo: 'Comparação', eventType: 'comparacao' as const },
+  { ordem: 6, titulo: 'Divergências', eventType: 'divergencia' as const },
+  { ordem: 7, titulo: 'Resolução', eventType: 'resolucao_divergencia' as const },
+  { ordem: 8, titulo: 'Processo finalizado', eventType: 'workflow' as const },
 ] as const;
