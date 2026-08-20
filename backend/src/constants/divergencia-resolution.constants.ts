@@ -7,12 +7,14 @@ export type DivergenciaResolutionStrategy =
 /** Status persistido em BL_DivergenciaCampo.Status (sem migration). */
 export type DivergenciaCampoResolutionStatus =
   | 'pendente'
+  | 'igual'
   | 'resolvido_bl_final'
   | 'resolvido_globalsys'
   | 'resolvido_manual';
 
 export const DIVERGENCIA_CAMPO_STATUS = {
   PENDENTE: 'pendente',
+  IGUAL: 'igual',
   RESOLVIDO_BL_FINAL: 'resolvido_bl_final',
   RESOLVIDO_GLOBALSYS: 'resolvido_globalsys',
   RESOLVIDO_MANUAL: 'resolvido_manual',

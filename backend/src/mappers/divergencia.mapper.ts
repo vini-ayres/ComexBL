@@ -15,7 +15,10 @@ import type {
   DivergenciaLatestDetailDto,
   DivergenciaPersistResponseDto,
 } from '../types/divergencia.types.js';
-import type { ComparisonStatus } from '../constants/bl-comparison.constants.js';
+import {
+  mapPersistedDivergenciaCategoria,
+  type ComparisonStatus,
+} from '../constants/bl-comparison.constants.js';
 import type { ComparisonKind, ComparisonOriginDto } from '../constants/comparison-kind.constants.js';
 import type { WorkflowSummaryDto } from '../types/workflow.types.js';
 import { mapWorkflowSummary } from './workflow.mapper.js';
@@ -154,7 +157,7 @@ export function mapDivergenciaDetail(params: {
       valorBlFinal: campo.ValorBlFinal,
       valorGlobalSys: campo.ValorGlobalSys,
       status: campo.Status,
-      categoria: campo.Categoria,
+      categoria: mapPersistedDivergenciaCategoria(campo.CampoKey, campo.Categoria),
     })),
   };
 }

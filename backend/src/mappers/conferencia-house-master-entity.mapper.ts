@@ -18,7 +18,7 @@ export function coerceConferenciaFieldValue(
     return null;
   }
 
-  if (!field || field.kind === 'text') {
+  if (!field) {
     return trimmed;
   }
 

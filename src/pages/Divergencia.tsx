@@ -1,43 +1,27 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import {
-  CheckCircle2, XCircle, Pencil, Send, GitCompareArrows,
-  History, Ship, Package, Boxes, Hash,
-  Loader2, RefreshCcw, Clock,
+  CheckCircle2, XCircle, GitCompareArrows,
+  Loader2, RefreshCcw, ChevronLeft, ChevronRight,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ApiError } from "@/lib/api/client"
 import {
   compareAndPersistDivergenciaGlobalSys,
-  compareDivergenciaGlobalSys,
   fetchDivergenciaLatest,
   resolveDivergencia,
   resolveDivergenciaCampo,
 } from "@/lib/api/divergencia"
-import { fetchProcessoTimeline } from "@/lib/api/processo"
-import { fetchWorkflow } from "@/lib/api/workflow"
 import type {
-  DivergenciaCampoResolutionDetailDto,
+  DashboardBlListItemDto,
   DivergenciaLatestDetailDto,
   DivergenciaResolutionStrategy,
-  ProcessoTimelineResponseDto,
-  WorkflowSummaryDto,
 } from "@/lib/api/types"
-import { BlFinalView } from "@/components/bl-final/BlFinalView"
+import { DivergenceSectionTables } from "@/components/divergencia/DivergenceFieldTables"
 import {
-  DivergenceIndexedTables,
-  DivergenceSectionTables,
-} from "@/components/divergencia/DivergenceFieldTables"
-import { ProcessoTimeline } from "@/components/processo/ProcessoTimeline"
-import { WorkflowSummaryCard } from "@/components/workflow/WorkflowSummaryCard"
-import {
-  filterRowsForDocumentTab,
-  groupRowsByIndex,
-  groupRowsBySection,
+  groupAllDivergenceSections,
   mapCamposToDisplayRows,
-  resolveFieldLabel,
 } from "@/lib/divergencia/field-display"
 import { ApiStatePanel } from "@/components/shared/ApiStatePanel"
 import { OperationalEmptyQueueCard } from "@/components/shared/OperationalEmptyQueueCard"
@@ -45,20 +29,20 @@ import { TableSkeleton } from "@/components/shared/LoadingSkeleton"
 import { buildDocumentSearchParams, useDocumentParams } from "@/hooks/useDocumentParams"
 import { fetchDashboard } from "@/lib/api/dashboard"
 import { useAuth } from "@/hooks/useAuth"
-import { fetchBlFinal } from "@/lib/api/bl-final"
-import type { BlFinalResponseDto } from "@/lib/api/types"
-import { formatDateTime } from "@/lib/utils"
 import { toast } from "sonner"
 import { useNavigate } from "react-router-dom"
 
-function isPendingCampoStatus(status: string): boolean {
-  return status === "pendente"
+function hasResolvedCampo(status: string): boolean {
+  return status.startsWith("resolvido")
 }
 
-function comparisonStatusLabel(status: string): string {
+function statusLabel(status: string): string {
   const labels: Record<string, string> = {
-    completo_sem_divergencia: "Completo sem divergência",
-    completo_com_divergencia: "Completo com divergência",
+    pendente: "Pendente",
+    resolvido: "Resolvido",
+    sem_divergencia: "Sem divergência",
+    completo_sem_divergencia: "Valores conferem",
+    completo_com_divergencia: "Diferenças encontradas",
     documento_incompleto: "Documento incompleto",
     erro_comparacao: "Erro na comparação",
   }
@@ -68,27 +52,17 @@ function comparisonStatusLabel(status: string): string {
 export default function Divergencia() {
   const navigate = useNavigate()
   const { user } = useAuth()
-  const { tipo, documentNumber, masterNumber, isValid } = useDocumentParams()
+  const { tipo, documentNumber, isValid } = useDocumentParams()
 
   const [divergencia, setDivergencia] = useState<DivergenciaLatestDetailDto | null>(null)
-  const [resolvedCampos, setResolvedCampos] = useState<DivergenciaCampoResolutionDetailDto[]>([])
-  const [workflow, setWorkflow] = useState<WorkflowSummaryDto | null>(null)
-  const [timeline, setTimeline] = useState<ProcessoTimelineResponseDto | null>(null)
-  const [blFinal, setBlFinal] = useState<BlFinalResponseDto | null>(null)
-
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [resolving, setResolving] = useState(false)
   const [resolvingKey, setResolvingKey] = useState<string | null>(null)
   const [recomparing, setRecomparing] = useState(false)
-
-  const [workflowLoading, setWorkflowLoading] = useState(false)
-  const [workflowError, setWorkflowError] = useState<string | null>(null)
-  const [timelineLoading, setTimelineLoading] = useState(false)
-  const [timelineError, setTimelineError] = useState<string | null>(null)
-  const [blFinalLoading, setBlFinalLoading] = useState(false)
-  const [blFinalError, setBlFinalError] = useState<string | null>(null)
   const [resolvingDefaultDocument, setResolvingDefaultDocument] = useState(!isValid)
+  const [queue, setQueue] = useState<DashboardBlListItemDto[]>([])
+  const [queueLoading, setQueueLoading] = useState(false)
 
   useEffect(() => {
     if (isValid) {
@@ -134,53 +108,28 @@ export default function Divergencia() {
     }
   }, [isValid, navigate])
 
-  const refreshWorkflow = useCallback(async () => {
-    if (!isValid) return
-    setWorkflowLoading(true)
-    setWorkflowError(null)
+  const loadQueue = useCallback(async () => {
+    setQueueLoading(true)
     try {
-      const result = await fetchWorkflow(tipo, documentNumber)
-      setWorkflow(result)
-    } catch (err) {
-      const message = err instanceof ApiError ? err.message : "Erro ao carregar workflow."
-      setWorkflowError(message)
-      setWorkflow(null)
+      const result = await fetchDashboard({
+        status: "divergencia",
+        page: 1,
+        pageSize: 100,
+      })
+      setQueue(result.items.data)
+    } catch {
+      setQueue([])
     } finally {
-      setWorkflowLoading(false)
+      setQueueLoading(false)
     }
-  }, [documentNumber, isValid, tipo])
+  }, [])
 
-  const refreshTimeline = useCallback(async () => {
-    if (!isValid) return
-    setTimelineLoading(true)
-    setTimelineError(null)
-    try {
-      const result = await fetchProcessoTimeline(tipo, documentNumber)
-      setTimeline(result)
-    } catch (err) {
-      const message = err instanceof ApiError ? err.message : "Erro ao carregar timeline."
-      setTimelineError(message)
-      setTimeline(null)
-    } finally {
-      setTimelineLoading(false)
-    }
-  }, [documentNumber, isValid, tipo])
-
-  const refreshBlFinal = useCallback(async () => {
-    if (!masterNumber) return
-    setBlFinalLoading(true)
-    setBlFinalError(null)
-    try {
-      const result = await fetchBlFinal(masterNumber)
-      setBlFinal(result)
-    } catch (err) {
-      const message = err instanceof ApiError ? err.message : "Erro ao carregar BL Final."
-      setBlFinalError(message)
-      setBlFinal(null)
-    } finally {
-      setBlFinalLoading(false)
-    }
-  }, [masterNumber])
+  const goToQueueItem = useCallback((item: DashboardBlListItemDto) => {
+    navigate(`/divergencia?${buildDocumentSearchParams({
+      tipo: item.tipo,
+      documentNumber: item.numeroBl,
+    })}`)
+  }, [navigate])
 
   const loadDivergencia = useCallback(async () => {
     if (!isValid) {
@@ -196,6 +145,11 @@ export default function Divergencia() {
 
       try {
         latest = await fetchDivergenciaLatest(tipo, documentNumber)
+        const alreadyResolved = latest.campos.some((campo) => hasResolvedCampo(campo.status))
+        if (!alreadyResolved) {
+          await compareAndPersistDivergenciaGlobalSys(tipo, documentNumber)
+          latest = await fetchDivergenciaLatest(tipo, documentNumber)
+        }
       } catch (err) {
         if (err instanceof ApiError && err.status === 404) {
           await compareAndPersistDivergenciaGlobalSys(tipo, documentNumber)
@@ -206,8 +160,6 @@ export default function Divergencia() {
       }
 
       setDivergencia(latest)
-      setWorkflow(latest.workflow)
-      setResolvedCampos([])
     } catch (err) {
       const message = err instanceof ApiError
         ? err.message
@@ -221,41 +173,31 @@ export default function Divergencia() {
 
   useEffect(() => {
     void loadDivergencia()
-    void refreshWorkflow()
-    void refreshTimeline()
-    void refreshBlFinal()
-  }, [loadDivergencia, refreshBlFinal, refreshTimeline, refreshWorkflow])
+    void loadQueue()
+  }, [loadDivergencia, loadQueue])
+
+  const queueIndex = useMemo(
+    () => queue.findIndex((item) => item.numeroBl === documentNumber),
+    [documentNumber, queue],
+  )
+  const queuePage = queueIndex >= 0 ? queueIndex + 1 : 1
+  const queueTotal = queue.length
+  const showQueueNav = queueTotal > 1
 
   const rows = useMemo(() => {
     if (!divergencia) return []
     return mapCamposToDisplayRows(divergencia.campos)
   }, [divergencia])
 
-  const masterSections = useMemo(
-    () => groupRowsBySection(filterRowsForDocumentTab(rows, "master", divergencia?.documentType ?? "Master")),
-    [rows, divergencia?.documentType],
-  )
-  const houseSections = useMemo(
-    () => groupRowsBySection(filterRowsForDocumentTab(rows, "house", divergencia?.documentType ?? "House")),
-    [rows, divergencia?.documentType],
-  )
-  const cargoGroups = useMemo(
-    () => groupRowsByIndex(filterRowsForDocumentTab(rows, "cargo", divergencia?.documentType ?? "Master"), "cargo"),
-    [rows, divergencia?.documentType],
-  )
-  const ncmGroups = useMemo(
-    () => groupRowsByIndex(filterRowsForDocumentTab(rows, "ncm", divergencia?.documentType ?? "Master"), "ncm"),
-    [rows, divergencia?.documentType],
-  )
-
-  const pendingCount = rows.filter((r) => r.pending).length
-  const allResolved = divergencia?.status === "resolvido" || pendingCount === 0
+  const sections = useMemo(() => groupAllDivergenceSections(rows), [rows])
+  const pendingCount = rows.filter((row) => row.pending).length
+  const matchingCount = rows.filter((row) => row.status === "igual").length
+  const allResolved = divergencia?.status === "resolvido"
+    || divergencia?.status === "sem_divergencia"
+    || pendingCount === 0
 
   async function applyResolveResponse(result: Awaited<ReturnType<typeof resolveDivergencia>>) {
     setDivergencia(result.divergencia)
-    setResolvedCampos(result.campos)
-    if (result.workflow) setWorkflow(result.workflow)
-    await Promise.all([refreshWorkflow(), refreshTimeline()])
   }
 
   async function handleBulkResolve(strategy: DivergenciaResolutionStrategy) {
@@ -268,11 +210,28 @@ export default function Divergencia() {
         responsavelNome: user?.nome,
       })
       await applyResolveResponse(result)
+
+      const allResolvedNow = result.summary.allResolved
+      const remaining = queue.filter((item) => item.numeroBl !== documentNumber)
+      const next = remaining[Math.max(queueIndex, 0)] ?? remaining[0]
+
       toast.success(
-        strategy === "aceitar_bl_final"
-          ? "Divergência resolvida com valores do BL Final."
-          : "Divergência resolvida com valores do GlobalSys.",
+        allResolvedNow && next
+          ? strategy === "aceitar_bl_final"
+            ? "BL aceito. Carregando próximo BL da fila..."
+            : "GlobalSys mantido. Carregando próximo BL da fila..."
+          : strategy === "aceitar_bl_final"
+            ? "BL aceito. Um novo XML será gerado e enviado ao EDI."
+            : "Valores do GlobalSys mantidos. Processo finalizado, sem envio de XML.",
       )
+
+      if (allResolvedNow) {
+        if (next) {
+          goToQueueItem(next)
+          return
+        }
+        await loadQueue()
+      }
     } catch (err) {
       const message = err instanceof ApiError ? err.message : "Erro ao resolver divergência."
       toast.error(message)
@@ -291,7 +250,7 @@ export default function Divergencia() {
         responsavelNome: user?.nome,
       })
       await applyResolveResponse(result)
-      toast.success(`Campo "${campoKey}" resolvido.`)
+      toast.success("Campo resolvido.")
     } catch (err) {
       const message = err instanceof ApiError ? err.message : "Erro ao resolver campo."
       toast.error(message)
@@ -304,11 +263,9 @@ export default function Divergencia() {
     if (!isValid) return
     setRecomparing(true)
     try {
-      await compareDivergenciaGlobalSys(tipo, documentNumber)
       await compareAndPersistDivergenciaGlobalSys(tipo, documentNumber)
-      await loadDivergencia()
-      await refreshWorkflow()
-      await refreshTimeline()
+      const latest = await fetchDivergenciaLatest(tipo, documentNumber)
+      setDivergencia(latest)
       toast.success("Comparação atualizada com sucesso.")
     } catch (err) {
       const message = err instanceof ApiError ? err.message : "Erro ao recomparar."
@@ -318,28 +275,21 @@ export default function Divergencia() {
     }
   }
 
-  const historicoItems = useMemo(() => {
-    const fromResolution = resolvedCampos.filter((c) => c.resolvedAt)
-    const fromCampos = (divergencia?.campos ?? [])
-      .filter((c) => !isPendingCampoStatus(c.status))
-      .map((c) => ({
-        campoKey: c.campoKey,
-        campoLabel: c.campoLabel,
-        status: c.status,
-        valorBlFinal: c.valorBlFinal,
-        valorGlobalSys: c.valorGlobalSys,
-        responsavelNome: null as string | null,
-        observacao: null as string | null,
-        resolvedAt: divergencia?.updatedAt ?? null,
-      }))
+  function goToPrevious() {
+    const previous = queueIndex > 0 ? queue[queueIndex - 1] : undefined
+    if (previous) {
+      goToQueueItem(previous)
+    }
+  }
 
-    const merged = fromResolution.length > 0 ? fromResolution : fromCampos
-    return merged.sort((a, b) => {
-      const dateA = a.resolvedAt ? new Date(a.resolvedAt).getTime() : 0
-      const dateB = b.resolvedAt ? new Date(b.resolvedAt).getTime() : 0
-      return dateB - dateA
-    })
-  }, [divergencia, resolvedCampos])
+  function goToNext() {
+    const next = queueIndex >= 0 && queueIndex < queueTotal - 1
+      ? queue[queueIndex + 1]
+      : undefined
+    if (next) {
+      goToQueueItem(next)
+    }
+  }
 
   if (!isValid) {
     if (resolvingDefaultDocument) {
@@ -386,8 +336,6 @@ export default function Divergencia() {
     )
   }
 
-  const activeWorkflow = workflow ?? divergencia.workflow
-
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -400,15 +348,44 @@ export default function Divergencia() {
               {divergencia.documentNumber} · {tipo}
             </h2>
             <p className="text-xs text-muted-foreground">
-              {divergencia.origin?.label ?? "BL Final × GlobalSys"} — {pendingCount} pendente(s)
-              {activeWorkflow?.pendencia ? ` · ${activeWorkflow.pendencia}` : ""}
+              BL Final × GlobalSys
+              {pendingCount > 0 ? ` · ${pendingCount} pendente(s)` : ""}
+              {matchingCount > 0 ? ` · ${matchingCount} conferem` : ""}
             </p>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Badge variant="danger" className="text-sm px-3 py-1">
-            {divergencia.status}
+          <Badge variant={pendingCount > 0 ? "danger" : "success"} className="text-sm px-3 py-1">
+            {statusLabel(divergencia.status)}
           </Badge>
+          {showQueueNav && (
+            <>
+              <div className="flex items-center gap-1 rounded-lg border border-border bg-white px-1">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  disabled={queueIndex <= 0 || queueLoading}
+                  onClick={goToPrevious}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <span className="text-xs font-medium text-primary-800 px-2 min-w-[80px] text-center">
+                  {queueLoading ? "..." : `${queuePage} / ${queueTotal}`}
+                </span>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  disabled={queueIndex < 0 || queueIndex >= queueTotal - 1 || queueLoading}
+                  onClick={goToNext}
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+              <span className="text-xs text-muted-foreground">{queueTotal} BL(s) na fila</span>
+            </>
+          )}
           <Button variant="outline" size="sm" onClick={() => void handleRecompare()} disabled={recomparing}>
             {recomparing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCcw className="h-3.5 w-3.5" />}
             Recomparar
@@ -416,188 +393,42 @@ export default function Divergencia() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Metadados da Comparação</CardTitle>
-            </CardHeader>
-            <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
-              <div>
-                <span className="text-muted-foreground">Tipo comparação</span>
-                <p className="font-medium">{divergencia.comparisonKind ?? "—"}</p>
-              </div>
-              <div>
-                <span className="text-muted-foreground">Status comparação</span>
-                <p className="font-medium">{comparisonStatusLabel(divergencia.comparisonStatus)}</p>
-              </div>
-              <div>
-                <span className="text-muted-foreground">Origem</span>
-                <p className="font-medium">{divergencia.origin?.label ?? "—"}</p>
-              </div>
-              <div>
-                <span className="text-muted-foreground flex items-center gap-1">
-                  <Clock className="h-3.5 w-3.5" /> Data comparação
-                </span>
-                <p className="font-medium tabular-nums">{formatDateTime(divergencia.comparisonDate)}</p>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Comparação de Campos</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Tabs defaultValue="master">
-                <TabsList>
-                  <TabsTrigger value="master"><Ship className="h-3.5 w-3.5 mr-1" /> Master</TabsTrigger>
-                  <TabsTrigger value="house"><Package className="h-3.5 w-3.5 mr-1" /> Houses</TabsTrigger>
-                  <TabsTrigger value="cargo"><Boxes className="h-3.5 w-3.5 mr-1" /> Cargo</TabsTrigger>
-                  <TabsTrigger value="ncm"><Hash className="h-3.5 w-3.5 mr-1" /> NCM</TabsTrigger>
-                  <TabsTrigger value="historico"><History className="h-3.5 w-3.5 mr-1" /> Histórico</TabsTrigger>
-                </TabsList>
-
-                <TabsContent value="master">
-                  <DivergenceSectionTables
-                    sections={masterSections}
-                    onResolveField={handleFieldResolve}
-                    resolvingKey={resolvingKey}
-                  />
-                </TabsContent>
-                <TabsContent value="house">
-                  <DivergenceSectionTables
-                    sections={houseSections}
-                    onResolveField={handleFieldResolve}
-                    resolvingKey={resolvingKey}
-                  />
-                </TabsContent>
-                <TabsContent value="cargo">
-                  <DivergenceIndexedTables
-                    groups={cargoGroups}
-                    onResolveField={handleFieldResolve}
-                    resolvingKey={resolvingKey}
-                  />
-                </TabsContent>
-                <TabsContent value="ncm">
-                  <DivergenceIndexedTables
-                    groups={ncmGroups}
-                    onResolveField={handleFieldResolve}
-                    resolvingKey={resolvingKey}
-                  />
-                </TabsContent>
-                <TabsContent value="historico">
-                  {historicoItems.length === 0 ? (
-                    <p className="text-sm text-muted-foreground py-4 text-center">
-                      Nenhuma resolução registrada ainda.
-                    </p>
-                  ) : (
-                    <div className="space-y-3">
-                      {historicoItems.map((h) => (
-                        <div key={h.campoKey} className="flex items-start gap-3 rounded-lg border border-border p-3">
-                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary-50 text-primary-600">
-                            <History className="h-4 w-4" />
-                          </div>
-                          <div className="flex-1 text-sm">
-                            <p>
-                              <span className="font-semibold text-primary-900">
-                                {"responsavelNome" in h ? h.responsavelNome ?? user?.nome ?? "Sistema" : user?.nome ?? "Sistema"}
-                              </span>{" "}
-                              resolveu <span className="font-medium">{resolveFieldLabel(h.campoKey, h.campoLabel)}</span>
-                            </p>
-                            <p className="text-xs text-muted-foreground mt-0.5">
-                              BL Final: <span className="font-medium">{h.valorBlFinal}</span>
-                              {" · "}GlobalSys: <span className="font-medium">{h.valorGlobalSys}</span>
-                            </p>
-                            {"observacao" in h && h.observacao && (
-                              <p className="text-xs text-muted-foreground mt-1">Obs: {h.observacao}</p>
-                            )}
-                            {h.resolvedAt && (
-                              <p className="text-[11px] text-muted-foreground mt-1">
-                                {formatDateTime(h.resolvedAt)}
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </TabsContent>
-              </Tabs>
-
-              <div className="mt-6 flex flex-wrap items-center gap-2 border-t border-border pt-5">
-                <Button
-                  variant="success"
-                  onClick={() => void handleBulkResolve("aceitar_bl_final")}
-                  disabled={resolving || allResolved}
-                >
-                  {resolving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-                  Aceitar BL
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => void handleBulkResolve("aceitar_globalsys")}
-                  disabled={resolving || allResolved}
-                >
-                  {resolving ? <Loader2 className="h-4 w-4 animate-spin" /> : <XCircle className="h-4 w-4" />}
-                  Manter GlobalSys
-                </Button>
-                <Button variant="secondary" disabled>
-                  <Pencil className="h-4 w-4" /> Editar
-                </Button>
-                <Button variant="accent" disabled={resolving || allResolved}>
-                  <Send className="h-4 w-4" /> Encaminhar
-                </Button>
-                {allResolved && (
-                  <span className="ml-2 text-sm text-success-700 font-medium flex items-center gap-1.5">
-                    <CheckCircle2 className="h-4 w-4" /> Todas as divergências resolvidas
-                  </span>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-
-          <BlFinalView
-            data={blFinal}
-            loading={blFinalLoading}
-            error={blFinalError}
-            onRetry={() => void refreshBlFinal()}
-          />
-        </div>
-
-        <div className="space-y-6">
-          <WorkflowSummaryCard
-            workflow={activeWorkflow}
-            loading={workflowLoading}
-            error={workflowError}
-            onRetry={() => void refreshWorkflow()}
+      <Card>
+        <CardHeader>
+          <CardTitle>Comparação de campos</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <DivergenceSectionTables
+            sections={sections}
+            onResolveField={handleFieldResolve}
+            resolvingKey={resolvingKey}
           />
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Timeline do Processo</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {timelineLoading ? (
-                <div className="flex justify-center py-8">
-                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                </div>
-              ) : timelineError ? (
-                <ApiStatePanel
-                  variant="error"
-                  title="Erro na timeline"
-                  description={timelineError}
-                  onRetry={() => void refreshTimeline()}
-                />
-              ) : timeline ? (
-                <ProcessoTimeline data={timeline} />
-              ) : (
-                <ApiStatePanel variant="empty" title="Timeline indisponível" />
-              )}
-            </CardContent>
-          </Card>
-        </div>
-      </div>
+          <div className="mt-6 flex flex-wrap items-center gap-2 border-t border-border pt-5">
+            <Button
+              variant="success"
+              onClick={() => void handleBulkResolve("aceitar_bl_final")}
+              disabled={resolving || allResolved}
+            >
+              {resolving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+              Aceitar BL
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => void handleBulkResolve("aceitar_globalsys")}
+              disabled={resolving || allResolved}
+            >
+              {resolving ? <Loader2 className="h-4 w-4 animate-spin" /> : <XCircle className="h-4 w-4" />}
+              Manter GlobalSys
+            </Button>
+            {allResolved && (
+              <span className="ml-2 text-sm text-success-700 font-medium flex items-center gap-1.5">
+                <CheckCircle2 className="h-4 w-4" /> Todas as divergências resolvidas
+              </span>
+            )}
+          </div>
+        </CardContent>
+      </Card>
     </div>
   )
 }

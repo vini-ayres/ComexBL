@@ -3,6 +3,7 @@ import type { LotStatus, XmlDispatchUiStatus } from '../constants/xml-dispatch.c
 
 export interface XmlDispatchEvaluationDto {
   dispatched: boolean;
+  dispatchedCount: number;
   lotStatus: LotStatus;
   reason: string;
   hblCount: number | null;
@@ -23,6 +24,9 @@ export interface BlLotHouseDto {
   containerNumber: string | null;
   linked: boolean;
   candidate: boolean;
+  xmlDispatchStatus: XmlDispatchUiStatus;
+  xmlDispatchedAt: string | null;
+  xmlDispatchError: string | null;
 }
 
 export interface BlLotSummaryDto {

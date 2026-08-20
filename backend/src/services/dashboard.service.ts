@@ -12,18 +12,20 @@ import type {
 } from '../types/dashboard.types.js';
 import { buildPaginatedResult } from '../utils/pagination.js';
 import type { ApoioHumanoService } from './apoio-humano.service.js';
+import type { WorkflowService } from './workflow.service.js';
 
 export class DashboardService {
   constructor(
     private readonly repository: DashboardRepository,
     private readonly apoioHumanoService: ApoioHumanoService,
+    private readonly workflowService: WorkflowService,
   ) {}
 
   async getDashboard(
     pagination: PaginationQuery,
     filters: DashboardFilters = {},
   ): Promise<DashboardResponseDto> {
-    await this.apoioHumanoService.syncPendingWorkflowStatus();
+    await this.syncOperationalWorkflows();
 
     const [kpiCounts, listResult] = await Promise.all([
       this.repository.getKpiCounts(),
@@ -37,7 +39,7 @@ export class DashboardService {
   }
 
   async getKpis(): Promise<DashboardKpiDto[]> {
-    await this.apoioHumanoService.syncPendingWorkflowStatus();
+    await this.syncOperationalWorkflows();
     const counts = await this.repository.getKpiCounts();
     return mapDashboardKpis(counts);
   }
@@ -46,7 +48,7 @@ export class DashboardService {
     pagination: PaginationQuery,
     filters: DashboardFilters = {},
   ): Promise<PaginatedResult<DashboardBlListItemDto>> {
-    await this.apoioHumanoService.syncPendingWorkflowStatus();
+    await this.syncOperationalWorkflows();
 
     const { items, total } = await this.repository.findOperationalItems(
       pagination,
@@ -54,6 +56,11 @@ export class DashboardService {
     );
 
     return this.buildListResult(items, total, pagination);
+  }
+
+  private async syncOperationalWorkflows(): Promise<void> {
+    await this.workflowService.restoreOrphanDraftWorkflows();
+    await this.apoioHumanoService.syncPendingWorkflowStatus();
   }
 
   private buildListResult(

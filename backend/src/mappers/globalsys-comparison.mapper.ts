@@ -15,14 +15,21 @@ function readColumnValue(
   record: Record<string, unknown>,
   column: string,
 ): string | null {
-  const value = record[column];
+  let value = record[column];
+
+  if (value === undefined) {
+    const match = Object.keys(record).find(
+      (key) => key.toLowerCase() === column.toLowerCase(),
+    );
+    value = match != null ? record[match] : undefined;
+  }
 
   if (value == null) {
     return null;
   }
 
   if (value instanceof Date) {
-    return value.toISOString();
+    return value.toISOString().slice(0, 10);
   }
 
   const text = String(value).trim();
@@ -52,11 +59,13 @@ export function flattenBlFinalHouse(house: BlFinalHouseDto): Record<string, stri
     loadingPortName: house.loadingPortName,
     dischargePortCode: house.dischargePortCode,
     dischargePortName: house.dischargePortName,
+    deliveryPortName: house.deliveryPortName,
     grossWeight: house.grossWeight,
     volumeMeasure: house.volumeMeasure,
     packingQuantity:
       house.packingQuantity != null ? String(house.packingQuantity) : null,
     itemName: house.itemName,
+    issueDate: house.issueDate,
     containerNumber: house.container.containerNumber,
     containerSealNo1: house.container.containerSealNo1,
     containerSealNo2: house.container.containerSealNo2,
@@ -81,6 +90,15 @@ export function readGlobalSysBlField(
   return readColumnValue(record, column);
 }
 
+const CARGO_COLUMN_FALLBACKS: Record<string, readonly string[]> = {
+  brand: ['Brand', 'MARCA'],
+  counterMark: ['ConterMark', 'CounterMark', 'CONTRAMARCA'],
+  cargoType: ['CargoType', 'NM_TIPO_CARGA'],
+  hazardClass: ['HazardClass', 'CLASSE_PERIGO'],
+  unNumber: ['UNNumber', 'COD_CARGA_PERIGOSA'],
+  packaging: ['Packaging', 'NM_EMBALAGEM', 'NM_MERCADORIA'],
+};
+
 export function mapGlobalSysCargoRecord(
   record: GlobalSysCargoRecord,
   index: number,
@@ -88,7 +106,10 @@ export function mapGlobalSysCargoRecord(
   const mapped: Record<string, string | null> = {};
 
   for (const { column, apiKey } of GLOBALSYS_TB_CARGA_BL_COLUMNS) {
-    mapped[apiKey] = readColumnValue(record, column);
+    mapped[apiKey] = readFirstColumnValue(record, [
+      column,
+      ...(CARGO_COLUMN_FALLBACKS[apiKey] ?? []),
+    ]);
   }
 
   return {
@@ -105,6 +126,7 @@ export function mapGlobalSysCargoRecord(
 export function mapGlobalSysNcmRecord(record: GlobalSysNcmRecord): GlobalSysComparableNcm | null {
   const ncmCode = readFirstColumnValue(record, [
     GLOBALSYS_TB_BL_NCM_COLUMNS[0].column,
+    'CD_NCM',
     'NR_NCM',
     'NCM',
   ]);

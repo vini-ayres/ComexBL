@@ -56,13 +56,13 @@ export const CAMPO_STATUS_TO_STRATEGY: Partial<
 };
 
 export interface ConferenciaComparableField {
-  key: 'GrossWeight' | 'VolumeMeasure' | 'PackingQuantity' | 'PackingQuantityUnitCode';
+  key: 'GrossWeight' | 'VolumeMeasure' | 'PackingQuantity';
   label: string;
   categoria: ConferenciaCategoria;
-  kind: 'decimal' | 'int' | 'text';
+  kind: 'decimal' | 'int';
 }
 
-/** Campos de peso, volume e embalagem comuns a Master e House. */
+/** Campos de peso, volume e quantidade comuns a Master e House. */
 export const CONFERENCIA_FIELDS: ConferenciaComparableField[] = [
   {
     key: 'GrossWeight',
@@ -82,13 +82,15 @@ export const CONFERENCIA_FIELDS: ConferenciaComparableField[] = [
     categoria: 'embalagem',
     kind: 'int',
   },
-  {
-    key: 'PackingQuantityUnitCode',
-    label: 'Unidade de embalagem',
-    categoria: 'embalagem',
-    kind: 'text',
-  },
 ];
+
+const CONFERENCIA_FIELD_KEYS = new Set<string>(
+  CONFERENCIA_FIELDS.map((field) => field.key),
+);
+
+export function isConferenciaFieldKey(campoKey: string): boolean {
+  return CONFERENCIA_FIELD_KEYS.has(campoKey);
+}
 
 export function isCampoPending(status: string): boolean {
   return status === CONFERENCIA_CAMPO_STATUS.PENDENTE;

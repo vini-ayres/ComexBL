@@ -48,8 +48,9 @@ export class BlDivergenciaRepository {
 
   async findByIdWithCampos(
     id: number,
+    tx?: Prisma.TransactionClient,
   ): Promise<(BlDivergencia & { campos: BlDivergenciaCampo[] }) | null> {
-    return prisma.blDivergencia.findUnique({
+    return this.client(tx).blDivergencia.findUnique({
       where: { Id: id },
       include: { campos: true },
     });

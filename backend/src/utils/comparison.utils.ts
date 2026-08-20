@@ -25,6 +25,45 @@ export function valuesDiverge(
   return normalizedDraft !== normalizedFinal;
 }
 
+function normalizeFreightTerm(value: string): string | null {
+  const upper = value.trim().toUpperCase();
+
+  if (upper === 'P' || upper === 'PREPAID') {
+    return 'PREPAID';
+  }
+
+  if (upper === 'C' || upper === 'COLLECT') {
+    return 'COLLECT';
+  }
+
+  return null;
+}
+
+export function normalizeComparedFieldValue(
+  campoKey: string,
+  value: unknown,
+): string | null {
+  const serialized = serializeComparisonValue(value);
+
+  if (serialized == null) {
+    return null;
+  }
+
+  const trimmed = serialized.trim();
+
+  if (trimmed.length === 0) {
+    return null;
+  }
+
+  const leaf = campoKey.split('.').pop() ?? campoKey;
+
+  if (leaf === 'freightTerm') {
+    return normalizeFreightTerm(trimmed) ?? trimmed;
+  }
+
+  return trimmed.replace(/\s+/g, ' ');
+}
+
 function normalizeComparisonValue(value: string | null): string | null {
   if (value == null) {
     return null;
@@ -95,4 +134,44 @@ export function formatCargoDisplayTitle(
 
 export function normalizeNcmCode(code: string): string {
   return code.trim().toUpperCase();
+}
+
+const CARGO_CAMPO_TOKEN_MAX_LENGTH = 24;
+
+/**
+ * Token curto e estável para CampoKey persistido.
+ * A chave lógica completa (ex.: cargo:||LASER TUBE CUTTING MACHINE...) estoura
+ * VARCHAR e faz Brand/CounterMark/etc. colidirem após truncamento.
+ */
+export function compactCargoKeyToken(logicalKey: string): string {
+  const normalized = logicalKey.trim();
+
+  if (
+    normalized.length > 0 &&
+    normalized.length <= CARGO_CAMPO_TOKEN_MAX_LENGTH &&
+    /^[A-Za-z0-9:_|-]+$/.test(normalized)
+  ) {
+    return normalized;
+  }
+
+  return `h${fnv1a32Hex(normalized)}`;
+}
+
+export function buildCargoCampoKey(
+  prefix: string,
+  logicalKey: string,
+  field: string,
+): string {
+  return `${prefix}cargo.${compactCargoKeyToken(logicalKey)}.${field}`;
+}
+
+function fnv1a32Hex(value: string): string {
+  let hash = 0x811c9dc5;
+
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+
+  return (hash >>> 0).toString(16).padStart(8, '0');
 }

@@ -80,7 +80,7 @@ export function ProcessoEventsTable({
                   {formatDateTime(event.occurredAt)}
                 </td>
                 <td className="px-3 py-2 font-medium text-primary-900">{event.titulo}</td>
-                <td className="px-3 py-2 text-xs text-muted-foreground hidden md:table-cell max-w-[240px] truncate">
+                <td className="px-3 py-2 text-xs text-muted-foreground hidden md:table-cell max-w-[320px] break-words">
                   {event.descricao ?? '—'}
                 </td>
                 <td className="px-3 py-2">

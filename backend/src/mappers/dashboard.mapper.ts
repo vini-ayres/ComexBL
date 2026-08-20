@@ -33,12 +33,17 @@ export function mapDashboardListItem(
     tipo: row.tipo,
     status: row.status,
     pendencia: resolvePendencia(row.status, row.pendencia),
+    blVersion: row.blVersion?.trim() || '-',
     responsavel: row.responsavel,
     dataHora: row.dataHora.toISOString(),
   };
 
   if (row.navio && row.navio !== '-') {
     item.navio = row.navio;
+  }
+
+  if (row.tipo === 'House' && row.masterNumber?.trim()) {
+    item.masterNumber = row.masterNumber.trim();
   }
 
   if (row.viagem && row.viagem !== '-') {

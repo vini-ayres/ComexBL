@@ -1,8 +1,16 @@
 import type { Request, Response } from 'express';
+import { LDAP_AD_GROUPS, ROLE_PRIORITY } from '../config/ldap-groups.js';
 import { BadRequestError } from '../errors/AppError.js';
 import { authRepository } from '../repositories/auth.repository.js';
 import { userSyncService } from '../services/user-sync.service.js';
 import { getClientIp } from '../middlewares/auth.middleware.js';
+
+const ALLOWED_ROLE_NAMES = new Set<string>(LDAP_AD_GROUPS.map((group) => group.roleName));
+const ALLOWED_GROUP_NAMES = new Set<string>(LDAP_AD_GROUPS.map((group) => group.name));
+
+function roleSortScore(roleName: string): number {
+  return ROLE_PRIORITY[roleName] ?? 0;
+}
 
 const ALLOWED_STATUS = new Set(['ativo', 'inativo', 'bloqueado']);
 
@@ -72,45 +80,48 @@ export class AdminUsersController {
   };
 
   listAdGroups = async (_req: Request, res: Response): Promise<void> => {
-    const groups = await authRepository.listAdGroups();
-    const users = await authRepository.listUsers();
+    const groups = (await authRepository.listAdGroups()).filter((group) =>
+      ALLOWED_GROUP_NAMES.has(group.Name),
+    );
+    const sorted = [...groups].sort(
+      (a, b) => roleSortScore(b.defaultRole.Name) - roleSortScore(a.defaultRole.Name),
+    );
 
     res.json({
-      groups: groups.map((group) => ({
+      groups: sorted.map((group) => ({
         id: group.Id,
         nomeGrupo: group.Name,
         dn: group.DistinguishedName,
         perfilMapeado: group.defaultRole.Name,
-        usuarios: users.filter((user) => user.grupoAD === group.Name).length,
+        usuarios: group._count.users,
         sincronizadoEm: group.SyncedAt?.toISOString() ?? null,
       })),
     });
   };
 
   listPermissions = async (_req: Request, res: Response): Promise<void> => {
-    const { prisma } = await import('../prisma/client.js');
-    const roles = await prisma.appRole.findMany({
-      include: {
-        permissions: {
-          include: { permission: true },
-        },
-      },
-      orderBy: { Name: 'asc' },
-    });
+    const [roles, permissions] = await Promise.all([
+      authRepository.listRolesWithPermissions(),
+      authRepository.listPermissionCatalog(),
+    ]);
 
-    const permissions = await prisma.appPermission.findMany({
-      orderBy: { Key: 'asc' },
-    });
+    const sortedRoles = roles
+      .filter((role) => ALLOWED_ROLE_NAMES.has(role.Name))
+      .sort((a, b) => roleSortScore(b.Name) - roleSortScore(a.Name) || a.Name.localeCompare(b.Name));
 
     res.json({
       permissoes: permissions.map((permission) => ({
         chave: permission.Key,
         label: permission.Label,
         descricao: permission.Description ?? '',
+        modulo: permission.Module ?? null,
       })),
-      perfis: roles.map((role) => ({
+      perfis: sortedRoles.map((role) => ({
         nome: role.Name,
+        descricao: role.Description ?? '',
         permissoes: role.permissions.map((item) => item.permission.Key),
+        usuarios: role._count.users,
+        gruposAD: role.adGroups.map((group) => group.Name),
       })),
     });
   };

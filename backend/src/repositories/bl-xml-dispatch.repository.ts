@@ -3,8 +3,24 @@ import { XML_DISPATCH_STATUS } from '../constants/xml-dispatch.constants.js';
 import { prisma } from '../prisma/client.js';
 
 export class BlXmlDispatchRepository {
-  async findByMasterId(blMasterId: number): Promise<BlXmlDispatch | null> {
+  async findByHouseId(blHouseId: number): Promise<BlXmlDispatch | null> {
     return prisma.blXmlDispatch.findUnique({
+      where: { BlHouseId: blHouseId },
+    });
+  }
+
+  async findByHouseIds(blHouseIds: number[]): Promise<BlXmlDispatch[]> {
+    if (blHouseIds.length === 0) {
+      return [];
+    }
+
+    return prisma.blXmlDispatch.findMany({
+      where: { BlHouseId: { in: blHouseIds } },
+    });
+  }
+
+  async findByMasterId(blMasterId: number): Promise<BlXmlDispatch[]> {
+    return prisma.blXmlDispatch.findMany({
       where: { BlMasterId: blMasterId },
     });
   }
@@ -21,9 +37,10 @@ export class BlXmlDispatchRepository {
 
   async claimForDispatch(
     blMasterId: number,
+    blHouseId: number,
     force: boolean,
   ): Promise<'claimed' | 'already_sent' | 'in_progress'> {
-    const existing = await this.findByMasterId(blMasterId);
+    const existing = await this.findByHouseId(blHouseId);
     const claimCheck = this.evaluateExisting(existing, force);
 
     if (claimCheck !== 'claimed') {
@@ -35,6 +52,7 @@ export class BlXmlDispatchRepository {
         await prisma.blXmlDispatch.create({
           data: {
             BlMasterId: blMasterId,
+            BlHouseId: blHouseId,
             Status: XML_DISPATCH_STATUS.PENDENTE,
             LastError: null,
           },
@@ -45,25 +63,25 @@ export class BlXmlDispatchRepository {
           throw error;
         }
 
-        const concurrent = await this.findByMasterId(blMasterId);
+        const concurrent = await this.findByHouseId(blHouseId);
         const concurrentCheck = this.evaluateExisting(concurrent, force);
 
         if (concurrentCheck !== 'claimed') {
           return concurrentCheck;
         }
 
-        await this.markPendente(blMasterId);
+        await this.markPendente(blHouseId);
         return 'claimed';
       }
     }
 
-    await this.markPendente(blMasterId);
+    await this.markPendente(blHouseId);
     return 'claimed';
   }
 
-  async markEnviado(blMasterId: number): Promise<void> {
+  async markEnviado(blHouseId: number): Promise<void> {
     await prisma.blXmlDispatch.update({
-      where: { BlMasterId: blMasterId },
+      where: { BlHouseId: blHouseId },
       data: {
         Status: XML_DISPATCH_STATUS.ENVIADO,
         DispatchedAt: new Date(),
@@ -72,9 +90,9 @@ export class BlXmlDispatchRepository {
     });
   }
 
-  async markFalhou(blMasterId: number, errorMessage: string): Promise<void> {
+  async markFalhou(blHouseId: number, errorMessage: string): Promise<void> {
     await prisma.blXmlDispatch.update({
-      where: { BlMasterId: blMasterId },
+      where: { BlHouseId: blHouseId },
       data: {
         Status: XML_DISPATCH_STATUS.FALHOU,
         LastError: errorMessage.slice(0, 1000),
@@ -82,9 +100,9 @@ export class BlXmlDispatchRepository {
     });
   }
 
-  private async markPendente(blMasterId: number): Promise<void> {
+  private async markPendente(blHouseId: number): Promise<void> {
     await prisma.blXmlDispatch.update({
-      where: { BlMasterId: blMasterId },
+      where: { BlHouseId: blHouseId },
       data: {
         Status: XML_DISPATCH_STATUS.PENDENTE,
         LastError: null,

@@ -19,4 +19,18 @@ export class BlFinalController {
 
     res.json(result);
   };
+
+  getHouseBlFinal = async (req: Request, res: Response): Promise<void> => {
+    const houseNumber = parseDocumentNumberParam(String(req.params.houseNumber));
+    const blVersion = parseBlVersionQuery(req.query.version, {
+      defaultValue: BL_VERSION.FINAL,
+    });
+
+    const result = await this.blFinalService.getHouseBlFinal(
+      houseNumber,
+      blVersion,
+    );
+
+    res.json(result);
+  };
 }

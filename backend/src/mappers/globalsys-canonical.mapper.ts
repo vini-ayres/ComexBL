@@ -8,7 +8,6 @@ import type {
   CanonicalPort,
 } from '../domain/canonical/canonical-shared.types.js';
 import {
-  emptyContainer,
   emptyParty,
   emptyPort,
 } from '../domain/canonical/canonical-shared.types.js';
@@ -39,12 +38,16 @@ function mapPort(
   };
 }
 
-function mapMasterContainer(
-  containerNumber: string | null | undefined,
-): CanonicalContainer {
+function mapMasterContainer(master: GlobalSysMasterDto): CanonicalContainer {
   return {
-    ...emptyContainer(),
-    number: toCanonicalString(containerNumber),
+    number: toCanonicalString(master.containerNumber),
+    sealNo1: toCanonicalString(master.containerSealNo1),
+    sealNo2: null,
+    type: toCanonicalString(master.containerType),
+    quantity: toCanonicalString(master.packingQuantity),
+    unitCode: toCanonicalString(master.packingQuantityUnitCode),
+    grossWeight: null,
+    volume: null,
   };
 }
 
@@ -52,8 +55,14 @@ function mapHouseContainer(
   containerNumber: string | null | undefined,
 ): CanonicalContainer {
   return {
-    ...emptyContainer(),
     number: toCanonicalString(containerNumber),
+    sealNo1: null,
+    sealNo2: null,
+    type: null,
+    quantity: null,
+    unitCode: null,
+    grossWeight: null,
+    volume: null,
   };
 }
 
@@ -85,19 +94,19 @@ function mapMasterDto(master: GlobalSysMasterDto): CanonicalMasterBl {
     shipper: mapParty(master.shipperName),
     consignee: mapParty(master.consigneeName),
     notify: emptyParty(),
-    carrierScacCode: null,
-    carrierName: null,
+    carrierScacCode: toCanonicalString(master.carrierScacCode),
+    carrierName: toCanonicalString(master.carrierName),
     cargoTypeLclFclBulk: null,
     loadType: null,
     serviceTerm: null,
-    freightTerm: null,
+    freightTerm: toCanonicalString(master.freightTerm),
     loadingPort: mapPort(master.loadingPortCode, master.loadingPortName),
     dischargePort: mapPort(master.dischargePortCode, master.dischargePortName),
     deliveryPort: emptyPort(),
     finalDestinationPort: emptyPort(),
-    container: mapMasterContainer(master.containerNumber),
-    packingQuantity: null,
-    packingQuantityUnitCode: null,
+    container: mapMasterContainer(master),
+    packingQuantity: toCanonicalString(master.packingQuantity),
+    packingQuantityUnitCode: toCanonicalString(master.packingQuantityUnitCode),
     grossWeight: toCanonicalString(master.grossWeight),
     volumeMeasure: toCanonicalString(master.volumeMeasure),
   };
@@ -120,12 +129,12 @@ function mapHouseDto(
     receiptPort: emptyPort(),
     loadingPort: mapPort(house.loadingPortCode, house.loadingPortName),
     dischargePort: mapPort(house.dischargePortCode, house.dischargePortName),
-    deliveryPort: emptyPort(),
-    packingQuantity: null,
+    deliveryPort: mapPort(null, house.deliveryPortName),
+    packingQuantity: toCanonicalString(house.packingQuantity),
     packingQuantityUnitCode: null,
     grossWeight: toCanonicalString(house.grossWeight),
     volumeMeasure: toCanonicalString(house.volumeMeasure),
-    issueDate: null,
+    issueDate: toCanonicalString(house.issueDate),
     itemName: toCanonicalString(house.itemName),
     container: mapHouseContainer(house.containerNumber),
     cargo: cargo.map(mapCargo),

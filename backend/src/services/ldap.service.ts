@@ -1,5 +1,4 @@
 import ldap from 'ldapjs';
-import { env } from '../config/env.js';
 import {
   extractGroupCnFromMemberOf,
   LDAP_AD_GROUPS,
@@ -9,6 +8,9 @@ import {
   ServiceUnavailableError,
   UnauthorizedError,
 } from '../errors/AppError.js';
+import { composeBindUser, isLdapEnabled } from '../mappers/integration-config.mapper.js';
+import { integrationSettingsService } from './integration-settings.service.js';
+import type { LdapRuntimeConfig } from '../types/integration.types.js';
 
 export interface LdapUserEntry {
   dn: string;
@@ -25,14 +27,20 @@ export interface LdapGroupEntry {
   dn: string;
 }
 
-function createClient(): ldap.Client {
-  return ldap.createClient({
-    url: env.ldap.url,
+function createClient(config: LdapRuntimeConfig): ldap.Client {
+  const client = ldap.createClient({
+    url: config.url,
     reconnect: false,
     timeout: 15_000,
     connectTimeout: 10_000,
-    tlsOptions: env.ldap.useTls ? { rejectUnauthorized: false } : undefined,
+    tlsOptions: config.useTls ? { rejectUnauthorized: false } : undefined,
   });
+
+  client.on('error', () => {
+    // Evita uncaughtException do ldapjs quando o socket cai após timeout/bind.
+  });
+
+  return client;
 }
 
 function bindClient(client: ldap.Client, dn: string, password: string): Promise<void> {
@@ -179,17 +187,15 @@ export function normalizeLogin(raw: string): string {
   return trimmed.toLowerCase();
 }
 
-function getServiceAccountBindIdentity(): string {
-  if (env.ldap.bindUpn.trim()) {
-    return env.ldap.bindUpn.trim();
-  }
+function getServiceAccountBindIdentity(config: LdapRuntimeConfig): string {
+  const identity = composeBindUser(config.bindDn, config.bindUpn);
 
-  if (env.ldap.bindDn.trim()) {
-    return env.ldap.bindDn.trim();
+  if (identity) {
+    return identity;
   }
 
   throw new BadRequestError(
-    'Defina LDAP_BIND_DN ou LDAP_BIND_UPN no .env para a conta de serviço.',
+    'Defina o usuário de bind LDAP (DN ou UPN) na tela de integrações ou no .env.',
   );
 }
 
@@ -207,26 +213,34 @@ function isInvalidCredentialsError(error: unknown): boolean {
 }
 
 export class LdapService {
-  assertConfigured(): void {
-    if (!env.ldap.enabled) {
+  async resolveConfig(override?: LdapRuntimeConfig): Promise<LdapRuntimeConfig> {
+    return override ?? integrationSettingsService.getLdapRuntimeConfig();
+  }
+
+  assertConfigured(config: LdapRuntimeConfig): void {
+    if (!isLdapEnabled(config)) {
       throw new BadRequestError(
-        'LDAP não configurado. Defina LDAP_URL, LDAP_BASE_DN, LDAP_BIND_DN (ou LDAP_BIND_UPN) e LDAP_BIND_PASSWORD no .env.',
+        'LDAP não configurado. Preencha servidor, Base DN, usuário de bind e senha na tela LDAP / Active Directory.',
       );
     }
   }
 
-  async withServiceAccount<T>(operation: (client: ldap.Client) => Promise<T>): Promise<T> {
-    this.assertConfigured();
-    const client = createClient();
-    const bindIdentity = getServiceAccountBindIdentity();
+  async withServiceAccount<T>(
+    operation: (client: ldap.Client, config: LdapRuntimeConfig) => Promise<T>,
+    override?: LdapRuntimeConfig,
+  ): Promise<T> {
+    const config = await this.resolveConfig(override);
+    this.assertConfigured(config);
+    const client = createClient(config);
+    const bindIdentity = getServiceAccountBindIdentity(config);
 
     try {
-      await bindClient(client, bindIdentity, env.ldap.bindPassword);
-      return await operation(client);
+      await bindClient(client, bindIdentity, config.bindPassword);
+      return await operation(client, config);
     } catch (error) {
       if (isInvalidCredentialsError(error)) {
         throw new ServiceUnavailableError(
-          'Falha no bind da conta de serviço LDAP. Verifique LDAP_BIND_DN (ou LDAP_BIND_UPN) e LDAP_BIND_PASSWORD no .env.',
+          'Falha no bind da conta de serviço LDAP. Verifique o usuário de bind e a senha.',
         );
       }
 
@@ -236,14 +250,14 @@ export class LdapService {
     }
   }
 
-  async testConnection(): Promise<void> {
-    await this.withServiceAccount(async (client) => {
-      await searchEntries(client, env.ldap.baseDn, {
+  async testConnection(override?: LdapRuntimeConfig): Promise<void> {
+    await this.withServiceAccount(async (client, config) => {
+      await searchEntries(client, config.baseDn, {
         scope: 'base',
         filter: '(objectClass=*)',
         sizeLimit: 1,
       });
-    });
+    }, override);
   }
 
   async findUserByLogin(login: string): Promise<LdapUserEntry | null> {
@@ -253,8 +267,8 @@ export class LdapService {
       return null;
     }
 
-    return this.withServiceAccount(async (client) => {
-      const entries = await searchEntries(client, env.ldap.baseDn, {
+    return this.withServiceAccount(async (client, config) => {
+      const entries = await searchEntries(client, config.baseDn, {
         scope: 'sub',
         filter: `(&(objectClass=user)(objectCategory=person)(|(sAMAccountName=${escapeFilter(normalizedLogin)})(userPrincipalName=${escapeFilter(normalizedLogin)})))`,
         attributes: [
@@ -276,7 +290,8 @@ export class LdapService {
   }
 
   async authenticateUser(login: string, password: string): Promise<LdapUserEntry> {
-    this.assertConfigured();
+    const config = await this.resolveConfig();
+    this.assertConfigured(config);
 
     if (!password) {
       throw new UnauthorizedError('Informe usuário e senha de rede.');
@@ -290,7 +305,7 @@ export class LdapService {
       );
     }
 
-    const client = createClient();
+    const client = createClient(config);
 
     try {
       await bindClient(client, ldapUser.dn, password);
@@ -316,17 +331,17 @@ export class LdapService {
   }
 
   async resolveAuthorizedGroupsForUser(login: string, _userDn: string): Promise<string[]> {
-    return this.withServiceAccount(async (client) => {
+    return this.withServiceAccount(async (client, config) => {
       const normalizedLogin = normalizeLogin(login);
       const authorizedGroups: string[] = [];
 
       for (const configuredGroup of LDAP_AD_GROUPS) {
-        const group = await this.findGroupByNameWithClient(client, configuredGroup.name);
+        const group = await this.findGroupByNameWithClient(client, config, configuredGroup.name);
         if (!group) {
           continue;
         }
 
-        const entries = await searchEntries(client, env.ldap.baseDn, {
+        const entries = await searchEntries(client, config.baseDn, {
           scope: 'sub',
           filter: `(&(objectClass=user)(objectCategory=person)(memberOf=${escapeFilter(group.dn)})(sAMAccountName=${escapeFilter(normalizedLogin)}))`,
           attributes: ['sAMAccountName'],
@@ -343,16 +358,17 @@ export class LdapService {
   }
 
   async findGroupByName(groupName: string): Promise<LdapGroupEntry | null> {
-    return this.withServiceAccount(async (client) =>
-      this.findGroupByNameWithClient(client, groupName),
+    return this.withServiceAccount(async (client, config) =>
+      this.findGroupByNameWithClient(client, config, groupName),
     );
   }
 
   private async findGroupByNameWithClient(
     client: ldap.Client,
+    config: LdapRuntimeConfig,
     groupName: string,
   ): Promise<LdapGroupEntry | null> {
-    const entries = await searchEntries(client, env.ldap.baseDn, {
+    const entries = await searchEntries(client, config.baseDn, {
       scope: 'sub',
       filter: `(&(objectClass=group)(cn=${escapeFilter(groupName)}))`,
       attributes: ['cn'],
@@ -371,8 +387,8 @@ export class LdapService {
   }
 
   async listGroupMembers(groupDn: string): Promise<LdapUserEntry[]> {
-    return this.withServiceAccount(async (client) => {
-      const entries = await searchEntries(client, env.ldap.baseDn, {
+    return this.withServiceAccount(async (client, config) => {
+      const entries = await searchEntries(client, config.baseDn, {
         scope: 'sub',
         filter: `(&(objectClass=user)(objectCategory=person)(memberOf=${escapeFilter(groupDn)}))`,
         attributes: [

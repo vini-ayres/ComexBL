@@ -28,6 +28,10 @@ function statusBadge(status: string) {
     return <Badge variant="warning">Pendente</Badge>
   }
 
+  if (status === "igual") {
+    return <Badge variant="success">Confere</Badge>
+  }
+
   if (status === "resolvido_bl_final") {
     return <Badge variant="success">BL Final</Badge>
   }
@@ -88,34 +92,36 @@ function DivergenceRowsTable({
                 <td className="px-3 py-2.5 text-primary-800">{row.valorGlobalSys || "—"}</td>
                 <td className="px-3 py-2.5">{statusBadge(row.status)}</td>
                 <td className="px-3 py-2.5">
-                  <div className="flex items-center justify-end gap-1">
-                    <Button
-                      variant="ghost"
-                      size="xs"
-                      disabled={!row.pending || isResolving}
-                      onClick={() => onResolveField(row.campoKey, "aceitar_bl_final")}
-                    >
-                      {isResolving ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <CheckCircle2 className="h-3.5 w-3.5 text-success-600" />
-                      )}
-                      BL
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="xs"
-                      disabled={!row.pending || isResolving}
-                      onClick={() => onResolveField(row.campoKey, "aceitar_globalsys")}
-                    >
-                      {isResolving ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <XCircle className="h-3.5 w-3.5 text-danger-600" />
-                      )}
-                      GS
-                    </Button>
-                  </div>
+                  {row.pending ? (
+                    <div className="flex items-center justify-end gap-1">
+                      <Button
+                        variant="ghost"
+                        size="xs"
+                        disabled={isResolving}
+                        onClick={() => onResolveField(row.campoKey, "aceitar_bl_final")}
+                      >
+                        {isResolving ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <CheckCircle2 className="h-3.5 w-3.5 text-success-600" />
+                        )}
+                        BL
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="xs"
+                        disabled={isResolving}
+                        onClick={() => onResolveField(row.campoKey, "aceitar_globalsys")}
+                      >
+                        {isResolving ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <XCircle className="h-3.5 w-3.5 text-danger-600" />
+                        )}
+                        GS
+                      </Button>
+                    </div>
+                  ) : null}
                 </td>
               </tr>
             )
@@ -134,7 +140,7 @@ export function DivergenceSectionTables({
   if (sections.length === 0) {
     return (
       <p className="text-sm text-muted-foreground py-6 text-center">
-        Nenhuma divergência nesta aba.
+        Nenhum campo para comparar.
       </p>
     )
   }

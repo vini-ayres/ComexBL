@@ -1,10 +1,17 @@
 import { prisma } from '../src/prisma/client.js';
+import { env } from '../src/config/env.js';
+import {
+  globalsysRuntimeFromEnv,
+  ldapRuntimeFromEnv,
+  localDbRuntimeFromEnv,
+  toStoredGlobalSysConfig,
+  toStoredLdapConfig,
+} from '../src/mappers/integration-config.mapper.js';
 
 const ROLES = [
   { name: 'Administrador', description: 'Acesso total ao sistema e configurações' },
   { name: 'Supervisor', description: 'Supervisão operacional e aprovação de divergências' },
   { name: 'Operador', description: 'Operação diária de BL e apoio humano' },
-  { name: 'Auditor', description: 'Consulta e auditoria do sistema' },
 ] as const;
 
 const PERMISSIONS = [
@@ -57,7 +64,6 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
   ],
   Supervisor: ['visualizar_bl', 'editar_bl', 'aprovar_divergencias', 'auditoria'],
   Operador: ['visualizar_bl', 'editar_bl'],
-  Auditor: ['visualizar_bl', 'auditoria'],
 };
 
 const AD_GROUPS = [
@@ -78,6 +84,13 @@ const AD_GROUPS = [
   },
 ] as const;
 
+const OBSOLETE_AD_GROUPS = [
+  'GG_COMEX_ADMIN',
+  'GG_COMEX_SUPERVISORES',
+  'GG_COMEX_OPERADORES',
+  'GG_COMEX_AUDITORIA',
+] as const;
+
 const TEST_USER = {
   login: 'teste',
   email: 'teste@empresa.com.br',
@@ -86,6 +99,19 @@ const TEST_USER = {
   adGroupName: 'GG_OCR_BL_ADMIN',
   roleName: 'Administrador',
 };
+
+async function removeObsoleteRbac(): Promise<void> {
+  await prisma.appAdGroup.deleteMany({
+    where: { Name: { in: [...OBSOLETE_AD_GROUPS] } },
+  });
+
+  const auditor = await prisma.appRole.findUnique({ where: { Name: 'Auditor' } });
+  if (!auditor) return;
+
+  await prisma.appUserRole.deleteMany({ where: { RoleId: auditor.Id } });
+  await prisma.appAdGroup.deleteMany({ where: { DefaultRoleId: auditor.Id } });
+  await prisma.appRole.delete({ where: { Id: auditor.Id } });
+}
 
 async function seedRolesAndPermissions(): Promise<Map<string, number>> {
   const roleIds = new Map<string, number>();
@@ -223,17 +249,15 @@ async function seedTestUser(roleIds: Map<string, number>): Promise<void> {
 }
 
 async function seedIntegrationDefaults(): Promise<void> {
+  const ldapStored = toStoredLdapConfig(ldapRuntimeFromEnv());
+  const globalsysStored = toStoredGlobalSysConfig(globalsysRuntimeFromEnv());
+  const localDbStored = toStoredGlobalSysConfig(localDbRuntimeFromEnv());
+
   const defaults = [
     {
       type: 'ldap',
-      config: {
-        servidor: 'ldap://ad01.empresa.com.br',
-        porta: 389,
-        baseDN: 'DC=empresa,DC=com,DC=br',
-        grupoAD: 'GG_OCR_BL_*',
-        bindUser: 'svc_ocr_bl',
-        usarSSL: true,
-      },
+      config: ldapStored,
+      enabled: env.ldap.enabled,
     },
     {
       type: 'onedrive',
@@ -242,23 +266,35 @@ async function seedIntegrationDefaults(): Promise<void> {
         clientId: '',
         pastaRaiz: '/BLs/Processados',
       },
+      enabled: false,
     },
     {
       type: 'globalsys_db',
-      config: {
-        host: 'globalsys-sql01.empresa.local',
-        database: 'GLOBALSYS_PROD',
-        usuario: 'svc_globalsys_ro',
-        encrypt: true,
-        trustServerCertificate: true,
-      },
+      config: globalsysStored,
+      enabled: env.globalsys.enabled,
+    },
+    {
+      type: 'local_db',
+      config: localDbStored,
+      enabled: true,
     },
   ] as const;
 
   for (const item of defaults) {
+    const existing = await prisma.appIntegrationConfig.findUnique({
+      where: { Type: item.type },
+    });
+
+    if (existing?.UpdatedByUserId) {
+      continue;
+    }
+
     await prisma.appIntegrationConfig.upsert({
       where: { Type: item.type },
-      update: {},
+      update: {
+        ConfigJson: JSON.stringify(item.config),
+        Status: item.enabled ? existing?.Status ?? 'desconectado' : 'desconectado',
+      },
       create: {
         Type: item.type,
         ConfigJson: JSON.stringify(item.config),
@@ -275,6 +311,9 @@ async function main(): Promise<void> {
   const houses = await prisma.blHouse.count();
   console.log(`OCR existente: ${masters} Master(s), ${houses} House(s).`);
 
+  await removeObsoleteRbac();
+  console.log('RBAC obsoleto removido (GG_COMEX_* e perfil Auditor).');
+
   const roleIds = await seedRolesAndPermissions();
   console.log(`Roles/permissões: ${roleIds.size} perfis, ${PERMISSIONS.length} permissões.`);
 
@@ -285,7 +324,7 @@ async function main(): Promise<void> {
   console.log(`Usuário de teste "${TEST_USER.login}" vinculado ao perfil ${TEST_USER.roleName}.`);
 
   await seedIntegrationDefaults();
-  console.log('Configurações de integração (ldap, onedrive, globalsys_db) inicializadas.');
+  console.log('Configurações de integração (ldap, onedrive, globalsys_db, local_db) inicializadas.');
 }
 
 main()

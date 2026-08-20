@@ -7,7 +7,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
-import { Progress } from "@/components/ui/progress"
 import { DocumentViewer } from "@/components/shared/DocumentViewer"
 import { OperationalEmptyQueueCard } from "@/components/shared/OperationalEmptyQueueCard"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -17,12 +16,6 @@ import { ApiError } from "@/lib/api/client"
 import { cn } from "@/lib/utils"
 import { groupCargoCampos, resolveCargoFieldLabel } from "@/lib/apoio-humano/cargo-display"
 import { toast } from "sonner"
-
-function confiancaColor(c: number) {
-  if (c >= 80) return "text-success-600 bg-success-50"
-  if (c >= 60) return "text-warning-600 bg-warning-50"
-  return "text-danger-600 bg-danger-50"
-}
 
 type CampoCategoria = "scalar" | "cargo" | "ncm"
 
@@ -72,7 +65,6 @@ function CamposTable({
           <tr>
             <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-primary-700">Campo</th>
             <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-primary-700">Valor</th>
-            <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-primary-700 w-28">Confiança</th>
             <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-primary-700 w-24">Status</th>
             <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-primary-700 w-20">Ações</th>
           </tr>
@@ -99,14 +91,6 @@ function CamposTable({
                     )}
                   </div>
                 )}
-              </td>
-              <td className="px-3 py-2.5">
-                <div className="flex items-center gap-2">
-                  <span className={cn("text-xs font-bold px-1.5 py-0.5 rounded", confiancaColor(campo.confianca))}>
-                    {campo.confianca}%
-                  </span>
-                </div>
-                <Progress value={campo.confianca} className="h-1 mt-1 w-16" />
               </td>
               <td className="px-3 py-2.5">
                 {campo.status === "confirmado" && <Badge variant="success" className="text-[10px]"><CheckCircle2 className="h-3 w-3" />OK</Badge>}
@@ -255,7 +239,8 @@ export default function ApoioHumano() {
 
   function startEdit(campo: CampoExtraidoDto) {
     setEditingId(campo.id)
-    setDraftValue(campo.valorManual ?? campo.valorRecebido)
+    const current = campo.valorManual ?? campo.valorRecebido
+    setDraftValue(current === "-" ? "" : current)
   }
 
   function saveEdit(id: string) {
@@ -370,7 +355,7 @@ export default function ApoioHumano() {
           <div>
             <h2 className="text-lg font-bold text-primary-900">{tituloNavio}</h2>
             <p className="text-xs text-muted-foreground">
-              {data.item.tipo} · Correção manual — {pendentesCount} campo(s) com baixa confiança
+              {data.item.tipo} · Correção manual — {pendentesCount} campo(s) nulo(s)
             </p>
           </div>
         </div>

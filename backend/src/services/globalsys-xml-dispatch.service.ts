@@ -2,6 +2,7 @@ import type { BlHouse, BlMaster } from '@prisma/client';
 import type { BlVersion } from '../constants/bl-version.constants.js';
 import { isBlVersion } from '../constants/bl-version.constants.js';
 import {
+  MASTER_HBL_COUNT,
   XML_DISPATCH_STATUS,
   XML_DISPATCH_UI_STATUS,
   type XmlDispatchUiStatus,
@@ -10,7 +11,8 @@ import { logger } from '../config/logger.js';
 import { NotFoundError } from '../errors/AppError.js';
 import {
   computeLotStatus,
-  isLotReadyForDispatch,
+  isHouseReadyForDispatch,
+  type HouseDispatchState,
   type LotStatusInput,
 } from '../domain/lot/lot-status.js';
 import { BlHouseRepository } from '../repositories/bl-house.repository.js';
@@ -30,6 +32,17 @@ function normalizeContainerNumber(value: string | null | undefined): string | nu
   return trimmed.length > 0 ? trimmed : null;
 }
 
+interface HouseLotSnapshot extends HouseDispatchState {
+  house: BlHouse;
+  valid: boolean;
+}
+
+interface MasterLotSnapshot {
+  master: BlMaster;
+  masterFinalized: boolean;
+  houses: HouseLotSnapshot[];
+}
+
 export class GlobalSysXmlDispatchService {
   constructor(
     private readonly masterRepository: BlMasterRepository,
@@ -44,6 +57,7 @@ export class GlobalSysXmlDispatchService {
     documentType: BlDocumentType,
     documentNumber: string,
     blVersion: BlVersion,
+    options: { force?: boolean } = {},
   ): Promise<void> {
     const master = await this.resolveMaster(documentType, documentNumber, blVersion);
 
@@ -54,12 +68,23 @@ export class GlobalSysXmlDispatchService {
       return;
     }
 
-    await this.evaluateAndDispatch(master, { force: false });
+    const houseId =
+      documentType === 'House'
+        ? (await this.houseRepository.findByHouseNumberAndVersion(
+            documentNumber,
+            blVersion,
+          ))?.Id
+        : undefined;
+
+    await this.evaluateAndDispatch(master, {
+      force: Boolean(options.force),
+      houseId,
+    });
   }
 
   async evaluateAndDispatchByMasterId(
     masterId: number,
-    options: { force?: boolean } = {},
+    options: { force?: boolean; houseId?: number } = {},
   ): Promise<XmlDispatchEvaluationDto> {
     const found = await this.masterRepository.findById(masterId);
 
@@ -67,7 +92,10 @@ export class GlobalSysXmlDispatchService {
       throw new NotFoundError(`BL Master ${masterId} não encontrado`);
     }
 
-    return this.evaluateAndDispatch(found.master, { force: Boolean(options.force) });
+    return this.evaluateAndDispatch(found.master, {
+      force: Boolean(options.force),
+      houseId: options.houseId,
+    });
   }
 
   private async resolveMaster(
@@ -110,72 +138,126 @@ export class GlobalSysXmlDispatchService {
 
   private async evaluateAndDispatch(
     master: BlMaster,
-    options: { force: boolean },
+    options: { force: boolean; houseId?: number },
   ): Promise<XmlDispatchEvaluationDto> {
+    master = await this.ensureHblCount(master);
     await this.linkOrphanHouses(master);
 
     const snapshot = await this.buildLotSnapshot(master);
-    const lotStatus = computeLotStatus(snapshot);
-    const ready = isLotReadyForDispatch(snapshot);
+    const lotInput = this.toLotStatusInput(snapshot);
+    const lotStatus = computeLotStatus(lotInput);
+    const targets = snapshot.houses.filter((item) =>
+      options.houseId == null ? true : item.house.Id === options.houseId,
+    );
 
-    if (!ready) {
-      logger.info(
-        `Master ${master.MasterNumber} (${master.BlVersion}) — lote ${lotStatus} (${snapshot.finalizedHouseCount}/${snapshot.hblCount ?? '-'} Houses)`,
-      );
-      return this.toEvaluation(snapshot, false, `Lote ${lotStatus}`);
+    if (options.houseId != null && targets.length === 0) {
+      return this.toEvaluation(lotInput, false, 0, 'House não vinculado a este Master');
+    }
+
+    let dispatchedCount = 0;
+    let lastReason = `Lote ${lotStatus}`;
+
+    for (const item of targets) {
+      const result = await this.dispatchHouseIfReady(master, item, snapshot, options.force);
+      if (result.dispatched) {
+        dispatchedCount += 1;
+      }
+      lastReason = result.reason;
+    }
+
+    const refreshed = await this.buildLotSnapshot(master);
+    return this.toEvaluation(
+      this.toLotStatusInput(refreshed),
+      dispatchedCount > 0,
+      dispatchedCount,
+      dispatchedCount > 0
+        ? dispatchedCount === 1
+          ? 'XML enviado para o House'
+          : `XML enviado para ${dispatchedCount} Houses`
+        : lastReason,
+    );
+  }
+
+  private async dispatchHouseIfReady(
+    master: BlMaster,
+    item: HouseLotSnapshot,
+    snapshot: MasterLotSnapshot,
+    force: boolean,
+  ): Promise<{ dispatched: boolean; reason: string }> {
+    if (!item.valid) {
+      return {
+        dispatched: false,
+        reason: `House ${item.house.HouseNumber} inválido para o Master`,
+      };
+    }
+
+    if (
+      !isHouseReadyForDispatch({
+        masterFinalized: snapshot.masterFinalized,
+        houseFinalized: item.houseFinalized,
+      })
+    ) {
+      return {
+        dispatched: false,
+        reason: `House ${item.house.HouseNumber} ainda não está pronto para XML`,
+      };
     }
 
     if (!this.webhookUrl) {
       logger.warn(
         'N8N_WEBHOOK_ENVIAR_XML_GLOBALSYS_URL não configurada — webhook ignorado',
       );
-      return this.toEvaluation(
-        snapshot,
-        false,
-        'Webhook n8n não configurado',
-      );
+      return { dispatched: false, reason: 'Webhook n8n não configurado' };
     }
 
     const claim = await this.xmlDispatchRepository.claimForDispatch(
       master.Id,
-      options.force,
+      item.house.Id,
+      force,
     );
 
     if (claim === 'already_sent') {
-      return this.toEvaluation(
-        { ...snapshot, xmlStatus: XML_DISPATCH_UI_STATUS.ENVIADO },
-        false,
-        'XML já enviado para esta versão',
-      );
+      return {
+        dispatched: false,
+        reason: `XML já enviado para o House ${item.house.HouseNumber}`,
+      };
     }
 
     if (claim === 'in_progress') {
-      return this.toEvaluation(
-        snapshot,
-        false,
-        'Envio de XML já em andamento',
-      );
+      return {
+        dispatched: false,
+        reason: `Envio de XML já em andamento para o House ${item.house.HouseNumber}`,
+      };
     }
 
     try {
-      await this.dispatchWebhook(master.Id);
-      await this.xmlDispatchRepository.markEnviado(master.Id);
-      logger.info('Webhook XML GlobalSys consolidado disparado com sucesso', {
+      await this.dispatchWebhook(master.Id, item.house.Id);
+      await this.xmlDispatchRepository.markEnviado(item.house.Id);
+      logger.info('Webhook XML GlobalSys disparado com sucesso', {
         masterId: master.Id,
         masterNumber: master.MasterNumber,
+        houseId: item.house.Id,
+        houseNumber: item.house.HouseNumber,
         blVersion: master.BlVersion,
-        hblCount: snapshot.hblCount,
+        hblCount: MASTER_HBL_COUNT,
       });
-      return this.toEvaluation(
-        { ...snapshot, xmlStatus: XML_DISPATCH_UI_STATUS.ENVIADO },
-        true,
-        'XML consolidado enviado',
-      );
+      return {
+        dispatched: true,
+        reason: `XML enviado para o House ${item.house.HouseNumber}`,
+      };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      await this.xmlDispatchRepository.markFalhou(master.Id, message);
+      await this.xmlDispatchRepository.markFalhou(item.house.Id, message);
       throw error;
     }
+  }
+
+  private async ensureHblCount(master: BlMaster): Promise<BlMaster> {
+    if (master.HBLCount === MASTER_HBL_COUNT) {
+      return master;
+    }
+
+    return this.masterRepository.updateHblCount(master.Id, MASTER_HBL_COUNT);
   }
 
   private async linkOrphanHouses(master: BlMaster): Promise<void> {
@@ -196,16 +278,16 @@ export class GlobalSysXmlDispatchService {
     }
   }
 
-  private async buildLotSnapshot(master: BlMaster): Promise<LotStatusInput> {
+  private async buildLotSnapshot(master: BlMaster): Promise<MasterLotSnapshot> {
     const blVersion = isBlVersion(master.BlVersion) ? master.BlVersion : null;
     const linked = blVersion
       ? await this.houseRepository.findByMasterIdAndVersion(master.Id, blVersion)
       : await this.houseRepository.findByMasterId(master.Id);
 
-    const [masterWorkflow, houseWorkflows, xmlDispatch] = await Promise.all([
+    const [masterWorkflow, houseWorkflows, xmlDispatches] = await Promise.all([
       this.workflowRepository.findByMasterId(master.Id),
       this.workflowRepository.findByHouseIds(linked.map((house) => house.Id)),
-      this.xmlDispatchRepository.findByMasterId(master.Id),
+      this.xmlDispatchRepository.findByHouseIds(linked.map((house) => house.Id)),
     ]);
 
     const houseWorkflowById = new Map(
@@ -213,25 +295,24 @@ export class GlobalSysXmlDispatchService {
         .filter((workflow) => workflow.BlHouseId != null)
         .map((workflow) => [workflow.BlHouseId!, workflow]),
     );
+    const xmlByHouseId = new Map(
+      xmlDispatches.map((item) => [item.BlHouseId, item]),
+    );
 
-    let finalizedHouseCount = 0;
-    for (const house of linked) {
+    const houses: HouseLotSnapshot[] = linked.map((house) => {
       const validation = this.relationshipValidator.validateMasterHouse(master, house);
-      if (!validation.valid) {
-        continue;
-      }
-
-      if (houseWorkflowById.get(house.Id)?.Status === 'finalizado') {
-        finalizedHouseCount += 1;
-      }
-    }
+      return {
+        house,
+        valid: validation.valid,
+        houseFinalized: houseWorkflowById.get(house.Id)?.Status === 'finalizado',
+        xmlStatus: this.toUiXmlStatus(xmlByHouseId.get(house.Id)?.Status),
+      };
+    });
 
     return {
-      hblCount: master.HBLCount,
+      master,
       masterFinalized: masterWorkflow?.Status === 'finalizado',
-      linkedCount: linked.length,
-      finalizedHouseCount,
-      xmlStatus: this.toUiXmlStatus(xmlDispatch?.Status),
+      houses,
     };
   }
 
@@ -253,11 +334,11 @@ export class GlobalSysXmlDispatchService {
     return this.houseRepository.linkToMaster(house.Id, master.Id);
   }
 
-  private async dispatchWebhook(masterId: number): Promise<void> {
+  private async dispatchWebhook(masterId: number, houseId: number): Promise<void> {
     const response = await fetch(this.webhookUrl!, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ masterId }),
+      body: JSON.stringify({ masterId, houseId }),
     });
 
     if (!response.ok) {
@@ -281,20 +362,50 @@ export class GlobalSysXmlDispatchService {
     return XML_DISPATCH_UI_STATUS.NAO_ENVIADO;
   }
 
+  private toLotStatusInput(snapshot: MasterLotSnapshot): LotStatusInput {
+    return {
+      masterFinalized: snapshot.masterFinalized,
+      houses: snapshot.houses.map((item) => ({
+        houseFinalized: item.houseFinalized,
+        xmlStatus: item.xmlStatus,
+      })),
+    };
+  }
+
   private toEvaluation(
     snapshot: LotStatusInput,
     dispatched: boolean,
+    dispatchedCount: number,
     reason: string,
   ): XmlDispatchEvaluationDto {
+    const finalizedHouseCount = snapshot.houses.filter((house) => house.houseFinalized).length;
+
     return {
       dispatched,
+      dispatchedCount,
       lotStatus: computeLotStatus(snapshot),
       reason,
-      hblCount: snapshot.hblCount,
-      linkedCount: snapshot.linkedCount,
-      finalizedHouseCount: snapshot.finalizedHouseCount,
+      hblCount: MASTER_HBL_COUNT,
+      linkedCount: snapshot.houses.length,
+      finalizedHouseCount,
       masterFinalized: snapshot.masterFinalized,
-      xmlDispatchStatus: snapshot.xmlStatus,
+      xmlDispatchStatus: this.aggregateXmlStatus(snapshot),
     };
+  }
+
+  private aggregateXmlStatus(snapshot: LotStatusInput): XmlDispatchUiStatus {
+    if (snapshot.houses.length === 0) {
+      return XML_DISPATCH_UI_STATUS.NAO_ENVIADO;
+    }
+    if (snapshot.houses.every((house) => house.xmlStatus === XML_DISPATCH_UI_STATUS.ENVIADO)) {
+      return XML_DISPATCH_UI_STATUS.ENVIADO;
+    }
+    if (snapshot.houses.some((house) => house.xmlStatus === XML_DISPATCH_UI_STATUS.FALHOU)) {
+      return XML_DISPATCH_UI_STATUS.FALHOU;
+    }
+    if (snapshot.houses.some((house) => house.xmlStatus === XML_DISPATCH_UI_STATUS.PENDENTE)) {
+      return XML_DISPATCH_UI_STATUS.PENDENTE;
+    }
+    return XML_DISPATCH_UI_STATUS.NAO_ENVIADO;
   }
 }

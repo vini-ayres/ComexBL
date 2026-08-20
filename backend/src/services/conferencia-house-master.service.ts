@@ -8,6 +8,7 @@ import {
   CONFERENCIA_WORKFLOW_STATUS,
   STRATEGY_TO_CAMPO_STATUS,
   isCampoPending,
+  isConferenciaFieldKey,
   resolveCampoAcceptedValue,
   type ConferenciaComparableField,
   type ConferenciaResolutionStrategy,
@@ -55,7 +56,6 @@ type ScalarSource = {
   GrossWeight: unknown;
   VolumeMeasure: unknown;
   PackingQuantity: unknown;
-  PackingQuantityUnitCode: string | null;
 };
 
 type ConferenciaResolveContext = {
@@ -414,7 +414,10 @@ export class ConferenciaHouseMasterService {
         }
 
         const pendingCampos =
-          latest?.campos.filter((campo) => isCampoPending(campo.status)) ?? [];
+          latest?.campos.filter(
+            (campo) =>
+              isConferenciaFieldKey(campo.campoKey) && isCampoPending(campo.status),
+          ) ?? [];
 
         if (latest && pendingCampos.length > 0) {
           pending.push(candidate);
@@ -876,7 +879,9 @@ export class ConferenciaHouseMasterService {
     }
 
     const context = await this.resolveDocumentContextFromConferencia(conferencia);
-    const pendingCampos = conferencia.campos.filter((campo) => isCampoPending(campo.Status));
+    const pendingCampos = conferencia.campos.filter(
+      (campo) => isConferenciaFieldKey(campo.CampoKey) && isCampoPending(campo.Status),
+    );
 
     if (pendingCampos.length === 0) {
       throw new ConflictError('Não há campos pendentes para resolver');
@@ -937,6 +942,12 @@ export class ConferenciaHouseMasterService {
     if (!campo) {
       throw new NotFoundError(
         `Campo ${decodedCampoKey} não encontrado na conferência ${conferenciaId}`,
+      );
+    }
+
+    if (!isConferenciaFieldKey(decodedCampoKey)) {
+      throw new BadRequestError(
+        `Campo ${decodedCampoKey} não faz parte da conferência House × Master`,
       );
     }
 
@@ -1035,8 +1046,8 @@ export class ConferenciaHouseMasterService {
         ? `${changedFields.length} diferença(s) House × Master — documento incompleto (Master ou House ausente)`
         : 'Documento incompleto para conferência House × Master'
       : hasDivergence
-        ? `${changedFields.length} diferença(s) de peso, volume ou embalagem entre House e Master`
-        : 'Peso, volume e embalagem conferem entre House e Master';
+        ? `${changedFields.length} diferença(s) de quantidade, peso bruto ou volume entre House e Master`
+        : 'Quantidade, peso bruto e volume conferem entre House e Master';
 
     return {
       documentType,
@@ -1154,20 +1165,11 @@ export class ConferenciaHouseMasterService {
     const quantities = houses
       .map((house) => house.PackingQuantity)
       .filter((value): value is number => value != null);
-    const units = [
-      ...new Set(
-        houses
-          .map((house) => house.PackingQuantityUnitCode?.trim())
-          .filter((value): value is string => Boolean(value)),
-      ),
-    ];
 
     return {
       GrossWeight: weights.length > 0 ? this.sum(weights) : null,
       VolumeMeasure: volumes.length > 0 ? this.sum(volumes) : null,
       PackingQuantity: quantities.length > 0 ? quantities.reduce((a, b) => a + b, 0) : null,
-      PackingQuantityUnitCode:
-        units.length === 0 ? null : units.length === 1 ? units[0] : 'MISTO',
     };
   }
 
@@ -1210,8 +1212,15 @@ export class ConferenciaHouseMasterService {
       return false;
     }
 
-    if (kind === 'text') {
-      return left.toUpperCase() !== right.toUpperCase();
+    if (kind === 'int') {
+      const leftNum = this.parseNumeric(left);
+      const rightNum = this.parseNumeric(right);
+
+      if (leftNum == null || rightNum == null) {
+        return left !== right;
+      }
+
+      return Math.abs(leftNum - rightNum) > 0;
     }
 
     const leftNum = this.parseNumeric(left);
@@ -1221,8 +1230,7 @@ export class ConferenciaHouseMasterService {
       return left !== right;
     }
 
-    const tolerance = kind === 'int' ? 0 : 0.001;
-    return Math.abs(leftNum - rightNum) > tolerance;
+    return Math.abs(leftNum - rightNum) > 0.001;
   }
 
   private async applyWorkflowAfterComparison(
@@ -1418,8 +1426,12 @@ export class ConferenciaHouseMasterService {
       throw new NotFoundError(`Conferência ${params.conferenciaId} não encontrada`);
     }
 
-    const pendingCount = refreshed.campos.filter((campo) => isCampoPending(campo.Status)).length;
-    const resolvedCount = refreshed.campos.length - pendingCount;
+    const pendingCount = refreshed.campos.filter(
+      (campo) => isConferenciaFieldKey(campo.CampoKey) && isCampoPending(campo.Status),
+    ).length;
+    const resolvedCount =
+      refreshed.campos.filter((campo) => isConferenciaFieldKey(campo.CampoKey)).length -
+      pendingCount;
     const allResolved = pendingCount === 0;
 
     if (allResolved) {

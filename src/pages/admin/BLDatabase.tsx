@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useState } from "react"
 import {
-  Database, Ship, Package, ChevronRight, Box, Container as ContainerIcon,
-  Loader2, AlertCircle, Link2, Unlink, Send, Save,
+  History, Ship, Package, ChevronRight, Box, Loader2, AlertCircle,
+  Link2, Unlink, Send, BadgeCheck,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
@@ -16,9 +15,9 @@ import {
   fetchBlMasters,
   linkHouseToMaster,
   unlinkHouseFromMaster,
-  updateMasterHblCount,
+  validacaoManualMaster,
 } from "@/lib/api/bl"
-import type { BlMasterDetailDto, BlMasterSummaryDto, LotStatus } from "@/lib/api/types"
+import type { BlMasterDetailDto, BlMasterSummaryDto, LotStatus, XmlDispatchUiStatus } from "@/lib/api/types"
 import { ApiError } from "@/lib/api/client"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/hooks/useAuth"
@@ -27,7 +26,7 @@ import { useNavigate } from "react-router-dom"
 import { toast } from "sonner"
 
 const LOT_LABELS: Record<LotStatus, { label: string; variant: "danger" | "warning" | "info" | "success" | "neutral" }> = {
-  count_ausente: { label: "Sem HBL", variant: "warning" },
+  count_ausente: { label: "Sem House", variant: "warning" },
   master_nao_finalizado: { label: "Master pendente", variant: "info" },
   aguardando_house: { label: "Aguarda House", variant: "warning" },
   house_nao_finalizado: { label: "House pendente", variant: "warning" },
@@ -36,7 +35,14 @@ const LOT_LABELS: Record<LotStatus, { label: string; variant: "danger" | "warnin
   xml_falhou: { label: "Falha XML", variant: "danger" },
 }
 
-type LotFilter = "todos" | "partlot" | "incompletos" | "aguardando_xml"
+const XML_LABELS: Record<XmlDispatchUiStatus, { label: string; variant: "danger" | "warning" | "info" | "success" | "neutral" }> = {
+  nao_enviado: { label: "Não enviado", variant: "neutral" },
+  pendente: { label: "Enviando", variant: "info" },
+  enviado: { label: "XML enviado", variant: "success" },
+  falhou: { label: "Falha XML", variant: "danger" },
+}
+
+type LotFilter = "todos" | "partlot" | "aguardando_xml" | "enviados"
 
 export default function BLDatabase() {
   const navigate = useNavigate()
@@ -53,7 +59,6 @@ export default function BLDatabase() {
   const [search, setSearch] = useState("")
   const [blVersion, setBlVersion] = useState<string>("todos")
   const [lotFilter, setLotFilter] = useState<LotFilter>("todos")
-  const [hblCountDraft, setHblCountDraft] = useState("")
 
   useEffect(() => {
     let cancelled = false
@@ -84,7 +89,7 @@ export default function BLDatabase() {
         if (cancelled) return
         const message = err instanceof ApiError
           ? err.message
-          : "Não foi possível carregar os BL Masters. Verifique se a API está rodando."
+          : "Não foi possível carregar o histórico de XML. Verifique se a API está rodando."
         setError(message)
       } finally {
         if (!cancelled) setLoadingList(false)
@@ -108,15 +113,12 @@ export default function BLDatabase() {
 
       try {
         const detail = await fetchBlMasterById(selectedMasterId!)
-        if (!cancelled) {
-          setSelectedMaster(detail)
-          setHblCountDraft(detail.hblCount == null ? "" : String(detail.hblCount))
-        }
+        if (!cancelled) setSelectedMaster(detail)
       } catch (err) {
         if (cancelled) return
         const message = err instanceof ApiError
           ? err.message
-          : "Não foi possível carregar os detalhes do BL Master."
+          : "Não foi possível carregar os detalhes do XML."
         setError(message)
         setSelectedMaster(null)
       } finally {
@@ -131,65 +133,68 @@ export default function BLDatabase() {
   const visibleMasters = useMemo(() => {
     return masters.filter((master) => {
       if (lotFilter === "partlot") return master.partlot
-      if (lotFilter === "incompletos") {
-        return master.lotStatus !== "xml_enviado" && master.lotStatus !== "pronto"
-      }
       if (lotFilter === "aguardando_xml") {
         return master.lotStatus === "pronto" || master.lotStatus === "xml_falhou"
       }
+      if (lotFilter === "enviados") return master.lotStatus === "xml_enviado"
       return true
     })
   }, [masters, lotFilter])
 
   const relatedHouses = selectedMaster?.houses ?? []
   const candidateHouses = selectedMaster?.candidateHouses ?? []
+  const isLotConcluido = Boolean(
+    selectedMaster &&
+    selectedMaster.workflowStatus === "finalizado" &&
+    relatedHouses.every((house) => house.status === "finalizado"),
+  )
 
   async function refreshSelected() {
     if (selectedMasterId == null) return
     const detail = await fetchBlMasterById(selectedMasterId)
     setSelectedMaster(detail)
-    setHblCountDraft(detail.hblCount == null ? "" : String(detail.hblCount))
     setMasters((current) =>
       current.map((item) => (item.id === detail.id ? { ...item, ...detail } : item)),
     )
   }
 
-  async function handleSaveHblCount() {
+  async function handleDispatch(force: boolean, houseId?: number) {
     if (!selectedMaster) return
-    const next = Number(hblCountDraft)
-    if (!Number.isInteger(next) || next < 1) {
-      toast.error("HBLCount deve ser um inteiro maior que zero")
+    if (force && !window.confirm("Reenviar o XML deste Master/House?")) {
       return
     }
 
     setSaving(true)
     try {
-      const detail = await updateMasterHblCount(selectedMaster.id, next)
-      setSelectedMaster(detail)
-      setHblCountDraft(String(detail.hblCount ?? next))
-      toast.success("HBLCount atualizado e lote reavaliado")
-      await refreshSelected()
-    } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Falha ao atualizar HBLCount")
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  async function handleDispatch(force: boolean) {
-    if (!selectedMaster) return
-    if (force && !window.confirm("Reenviar o XML consolidado deste Master/versão?")) {
-      return
-    }
-
-    setSaving(true)
-    try {
-      const result = await dispatchMasterXml(selectedMaster.id, force)
+      const result = await dispatchMasterXml(selectedMaster.id, force, houseId)
       setSelectedMaster(result.lot)
       toast.success(result.evaluation.reason)
       await refreshSelected()
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Falha ao disparar XML")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function handleValidacaoManual() {
+    if (!selectedMaster) return
+    if (
+      !window.confirm(
+        "Marcar esta pendência como concluída? Use quando a correção já foi feita no GlobalSys. Nenhum XML será enviado.",
+      )
+    ) {
+      return
+    }
+
+    setSaving(true)
+    try {
+      const detail = await validacaoManualMaster(selectedMaster.id)
+      setSelectedMaster(detail)
+      toast.success("Pendência concluída por validação manual")
+      await refreshSelected()
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Falha na validação manual")
     } finally {
       setSaving(false)
     }
@@ -201,9 +206,9 @@ export default function BLDatabase() {
     try {
       const detail = await linkHouseToMaster(selectedMaster.id, houseId)
       setSelectedMaster(detail)
-      toast.success("House vinculado ao Master")
+      toast.success("House agregado ao Master")
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Falha ao vincular House")
+      toast.error(err instanceof ApiError ? err.message : "Falha ao agregar House")
     } finally {
       setSaving(false)
     }
@@ -237,15 +242,15 @@ export default function BLDatabase() {
     navigate(`${path}?${buildDocumentSearchParams({ tipo: "House", documentNumber: numeroHbl })}`)
   }
 
+  function formatDispatchedAt(value: string | null | undefined) {
+    if (!value) return null
+    const date = new Date(value)
+    if (Number.isNaN(date.getTime())) return value
+    return date.toLocaleString("pt-BR")
+  }
+
   return (
     <div className="space-y-4 min-w-0 max-w-full overflow-x-hidden">
-      <div className="rounded-xl border border-info-100 bg-info-50 px-4 py-3 flex items-start gap-3 min-w-0">
-        <Database className="h-5 w-5 text-info-600 shrink-0 mt-0.5" />
-        <p className="text-sm text-info-700 min-w-0 break-words">
-          Painel do lote Master/House. O XML consolidado só sai quando o <span className="font-semibold">HBLCount</span> da versão (DRAFT ou FINAL) fecha com Houses vinculados e finalizados.
-        </p>
-      </div>
-
       {error && (
         <div className="rounded-xl border border-danger-200 bg-danger-50 px-4 py-3 flex items-start gap-3 text-sm text-danger-700 min-w-0">
           <AlertCircle className="h-5 w-5 shrink-0 mt-0.5" />
@@ -253,10 +258,12 @@ export default function BLDatabase() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-[380px_minmax(0,1fr)] gap-6 min-w-0">
+      <div className="grid grid-cols-1 lg:grid-cols-[360px_minmax(0,1fr)] gap-6 min-w-0">
         <Card className="h-fit lg:h-[calc(100vh-10rem)] lg:max-h-[calc(100vh-10rem)] overflow-hidden flex flex-col">
           <CardHeader className="shrink-0">
-            <CardTitle className="text-sm flex items-center gap-2"><Ship className="h-4 w-4" /> BL_Master</CardTitle>
+            <CardTitle className="text-sm flex items-center gap-2">
+              <History className="h-4 w-4" /> Envios
+            </CardTitle>
             <CardDescription>
               {loadingList ? "Carregando..." : `${visibleMasters.length} registros`}
             </CardDescription>
@@ -278,12 +285,12 @@ export default function BLDatabase() {
                   </SelectContent>
                 </Select>
                 <Select value={lotFilter} onValueChange={(value) => setLotFilter(value as LotFilter)}>
-                  <SelectTrigger><SelectValue placeholder="Lote" /></SelectTrigger>
+                  <SelectTrigger><SelectValue placeholder="Status" /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="todos">Todos os lotes</SelectItem>
+                    <SelectItem value="todos">Todos</SelectItem>
                     <SelectItem value="partlot">Partlot</SelectItem>
-                    <SelectItem value="incompletos">Incompletos</SelectItem>
                     <SelectItem value="aguardando_xml">Aguardando XML</SelectItem>
+                    <SelectItem value="enviados">XML enviado</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -299,7 +306,7 @@ export default function BLDatabase() {
               {!loadingList && visibleMasters.length === 0 && (
                 <div className="flex flex-col items-center gap-2 py-10 text-muted-foreground">
                   <Box className="h-8 w-8" />
-                  <p className="text-sm">Nenhum BL Master encontrado</p>
+                  <p className="text-sm">Nenhum envio encontrado</p>
                 </div>
               )}
 
@@ -316,12 +323,11 @@ export default function BLDatabase() {
                     <span className="font-semibold text-sm text-primary-900 truncate">{m.numeroBl}</span>
                     <Badge variant="outline" className="text-[10px] shrink-0">{m.blVersion}</Badge>
                   </div>
-                  <p className="text-xs text-muted-foreground mt-1 truncate">{m.navio} · {m.viagem}</p>
-                  <div className="flex items-center justify-between mt-2 gap-2 min-w-0">
-                    <span className="text-[11px] text-muted-foreground truncate">
-                      {m.finalizedHouseCount}/{m.hblCount ?? "—"}
-                      {m.partlot ? " · Partlot" : ""}
-                    </span>
+                  <p className="text-xs text-muted-foreground mt-1 truncate">
+                    {m.containerNumber ?? "Sem container"} · {m.houseCount} House{m.houseCount === 1 ? "" : "s"}
+                    {m.partlot ? " · Partlot" : ""}
+                  </p>
+                  <div className="flex items-center justify-end mt-2">
                     <LotBadge status={m.lotStatus} />
                   </div>
                 </button>
@@ -333,7 +339,7 @@ export default function BLDatabase() {
         <Card className="min-w-0 overflow-hidden">
           {!selectedMaster && !loadingDetail && (
             <CardContent className="py-16 text-center text-muted-foreground text-sm">
-              Selecione um BL Master para ver o lote
+              Selecione um Master para ver o histórico de XML
             </CardContent>
           )}
 
@@ -349,11 +355,14 @@ export default function BLDatabase() {
                   ) : selectedMaster ? (
                     <>
                       <CardTitle className="flex flex-wrap items-center gap-2 min-w-0">
+                        <Ship className="h-4 w-4 shrink-0" />
                         <span className="truncate">{selectedMaster.numeroBl}</span>
                         <Badge variant="outline" className="shrink-0">{selectedMaster.blVersion}</Badge>
                         {selectedMaster.partlot && <Badge variant="accent" className="shrink-0">Partlot</Badge>}
                       </CardTitle>
-                      <CardDescription className="truncate">{selectedMaster.navio} · Viagem {selectedMaster.viagem}</CardDescription>
+                      <CardDescription className="truncate">
+                        {selectedMaster.containerNumber ?? "Sem container"} · {selectedMaster.navio} · Viagem {selectedMaster.viagem}
+                      </CardDescription>
                     </>
                   ) : null}
                 </div>
@@ -366,42 +375,16 @@ export default function BLDatabase() {
               </CardHeader>
 
               {selectedMaster && (
-                <CardContent className="p-4 pt-0 min-w-0">
-                  <div className="mb-4 grid grid-cols-1 md:grid-cols-3 gap-3 min-w-0">
-                    <Field label="Container" value={selectedMaster.containerNumber ?? "-"} />
-                    <div className="rounded-lg bg-secondary/50 p-3 min-w-0">
-                      <p className="text-[11px] font-medium text-muted-foreground">HBL Count</p>
-                      <div className="flex items-center gap-2 mt-1 min-w-0">
-                        <Input
-                          type="number"
-                          min={1}
-                          value={hblCountDraft}
-                          disabled={!canEdit || saving}
-                          onChange={(event) => setHblCountDraft(event.target.value)}
-                          className="h-8 min-w-0"
-                        />
-                        {canEdit && (
-                          <Button size="sm" variant="secondary" disabled={saving} onClick={() => void handleSaveHblCount()}>
-                            <Save className="h-3.5 w-3.5" />
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                    <Field
-                      label="Houses do lote"
-                      value={`${selectedMaster.finalizedHouseCount} ok / ${selectedMaster.houseCount} vinc. / ${selectedMaster.hblCount ?? "—"} esp.`}
-                    />
-                  </div>
-
+                <CardContent className="p-4 pt-0 min-w-0 space-y-4">
                   {canEdit && (
-                    <div className="mb-4 flex flex-wrap gap-2">
+                    <div className="flex flex-wrap gap-2">
                       <Button
                         size="sm"
                         disabled={saving || selectedMaster.lotStatus === "xml_enviado"}
                         onClick={() => void handleDispatch(false)}
                       >
                         <Send className="h-3.5 w-3.5" />
-                        Enviar XML
+                        Enviar XML pendente
                       </Button>
                       <Button
                         size="sm"
@@ -409,111 +392,113 @@ export default function BLDatabase() {
                         disabled={saving}
                         onClick={() => void handleDispatch(true)}
                       >
-                        Reenviar
+                        Reenviar todos
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={saving || isLotConcluido}
+                        onClick={() => void handleValidacaoManual()}
+                      >
+                        <BadgeCheck className="h-3.5 w-3.5" />
+                        Validação manual
                       </Button>
                     </div>
                   )}
 
                   {selectedMaster.xmlDispatchError && (
-                    <p className="mb-4 text-xs text-danger-700 break-words">Último erro de XML: {selectedMaster.xmlDispatchError}</p>
+                    <p className="text-xs text-danger-700 break-words">
+                      Último erro de XML: {selectedMaster.xmlDispatchError}
+                    </p>
                   )}
 
-                  <Tabs defaultValue="houses" className="min-w-0">
-                    <TabsList className="inline-flex w-auto h-10">
-                      <TabsTrigger value="dados">Dados</TabsTrigger>
-                      <TabsTrigger value="containers">Container</TabsTrigger>
-                      <TabsTrigger value="houses">Houses ({relatedHouses.length})</TabsTrigger>
-                    </TabsList>
-
-                    <TabsContent value="dados">
-                      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 min-w-0">
-                        <Field label="Porto Origem" value={selectedMaster.portoOrigem} />
-                        <Field label="Porto Destino" value={selectedMaster.portoDestino} />
-                        <Field label="Data Embarque" value={selectedMaster.dataEmbarque} />
-                        <Field label="Chegada Prevista" value={selectedMaster.dataChegadaPrevista} />
-                        <Field label="Embarcador" value={selectedMaster.embarcador} />
-                        <Field label="Consignatário" value={selectedMaster.consignatario} />
-                        <Field label="Agente de Carga" value={selectedMaster.agenteCarga} />
-                        <Field label="Peso Bruto Total" value={selectedMaster.pesoBrutoTotal} />
-                        <Field label="Volumes Total" value={String(selectedMaster.volumesTotal)} />
-                      </div>
-                      <div className="mt-4 rounded-lg bg-secondary/50 p-3 min-w-0">
-                        <p className="text-[11px] text-muted-foreground">Arquivo de origem</p>
-                        <p className="text-xs font-mono text-primary-800 mt-1 break-all">{selectedMaster.origemArquivo}</p>
-                      </div>
-                    </TabsContent>
-
-                    <TabsContent value="containers">
-                      {selectedMaster.containerNumber ? (
-                        <div className="flex items-center gap-3 rounded-lg border border-border p-3 min-w-0">
-                          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary-50 text-primary-600 shrink-0">
-                            <ContainerIcon className="h-4 w-4" />
-                          </div>
-                          <span className="font-mono font-semibold text-primary-900 truncate">{selectedMaster.containerNumber}</span>
-                        </div>
-                      ) : (
-                        <p className="text-sm text-muted-foreground py-6 text-center">Nenhum container registrado</p>
-                      )}
-                    </TabsContent>
-
-                    <TabsContent value="houses">
-                      <div className="space-y-2 min-w-0">
-                        {relatedHouses.map((h) => (
-                          <div key={h.id} className="flex items-center justify-between rounded-lg border border-border p-3 gap-2 min-w-0">
-                            <button
-                              className="flex items-center gap-3 text-left min-w-0 flex-1"
-                              onClick={() => openHouse(h.status, h.numeroHbl)}
-                            >
-                              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-accent-50 text-accent-600 shrink-0">
-                                <Package className="h-4 w-4" />
-                              </div>
-                              <div className="min-w-0">
-                                <p className="font-semibold text-sm text-primary-900 truncate">{h.numeroHbl}</p>
-                                <p className="text-xs text-muted-foreground truncate">{h.descricaoMercadoria}</p>
-                              </div>
-                            </button>
-                            <div className="flex items-center gap-1 shrink-0">
-                              <StatusBadge status={h.status} className="text-[10px]" />
-                              {canEdit && (
-                                <Button size="icon" variant="ghost" className="h-8 w-8" disabled={saving} onClick={() => void handleUnlink(h.id)}>
-                                  <Unlink className="h-3.5 w-3.5" />
-                                </Button>
-                              )}
-                              <ChevronRight className="h-4 w-4 text-muted-foreground hidden sm:block" />
+                  <div className="space-y-2 min-w-0">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      Houses e XML
+                    </p>
+                    {relatedHouses.map((h) => (
+                      <div key={h.id} className="rounded-lg border border-border p-3 min-w-0 space-y-2">
+                        <div className="flex items-center justify-between gap-2 min-w-0">
+                          <button
+                            className="flex items-center gap-3 text-left min-w-0 flex-1"
+                            onClick={() => openHouse(h.status, h.numeroHbl)}
+                          >
+                            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-accent-50 text-accent-600 shrink-0">
+                              <Package className="h-4 w-4" />
                             </div>
+                            <div className="min-w-0">
+                              <p className="font-semibold text-sm text-primary-900 truncate">{h.numeroHbl}</p>
+                              <p className="text-xs text-muted-foreground truncate">
+                                {formatDispatchedAt(h.xmlDispatchedAt) ?? h.descricaoMercadoria}
+                              </p>
+                            </div>
+                          </button>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <StatusBadge status={h.status} className="text-[10px]" />
+                            <XmlBadge status={h.xmlDispatchStatus ?? "nao_enviado"} />
+                            {canEdit && (
+                              <Button size="icon" variant="ghost" className="h-8 w-8" disabled={saving} onClick={() => void handleUnlink(h.id)}>
+                                <Unlink className="h-3.5 w-3.5" />
+                              </Button>
+                            )}
+                            <ChevronRight className="h-4 w-4 text-muted-foreground hidden sm:block" />
+                          </div>
+                        </div>
+                        {h.xmlDispatchError && (
+                          <p className="text-xs text-danger-700 break-words">{h.xmlDispatchError}</p>
+                        )}
+                        {canEdit && h.status === "finalizado" && h.xmlDispatchStatus !== "enviado" && (
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            disabled={saving}
+                            onClick={() => void handleDispatch(false, h.id)}
+                          >
+                            <Send className="h-3.5 w-3.5" />
+                            Enviar XML deste House
+                          </Button>
+                        )}
+                        {canEdit && h.xmlDispatchStatus === "enviado" && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={saving}
+                            onClick={() => void handleDispatch(true, h.id)}
+                          >
+                            Reenviar XML deste House
+                          </Button>
+                        )}
+                      </div>
+                    ))}
+                    {relatedHouses.length === 0 && (
+                      <div className="flex flex-col items-center gap-2 py-8 text-muted-foreground">
+                        <Box className="h-8 w-8" />
+                        <p className="text-sm">Nenhum House vinculado a este Master</p>
+                      </div>
+                    )}
+
+                    {candidateHouses.length > 0 && (
+                      <div className="pt-2 min-w-0">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
+                          Mesmo container — agregar ao Master
+                        </p>
+                        {candidateHouses.map((h) => (
+                          <div key={h.id} className="flex items-center justify-between rounded-lg border border-dashed p-3 gap-2 mb-2 min-w-0">
+                            <div className="min-w-0">
+                              <p className="font-semibold text-sm text-primary-900 truncate">{h.numeroHbl}</p>
+                              <p className="text-xs text-muted-foreground truncate">{h.containerNumber}</p>
+                            </div>
+                            {canEdit && (
+                              <Button size="sm" variant="secondary" disabled={saving} onClick={() => void handleLink(h.id)}>
+                                <Link2 className="h-3.5 w-3.5" />
+                                Agregar
+                              </Button>
+                            )}
                           </div>
                         ))}
-                        {relatedHouses.length === 0 && (
-                          <div className="flex flex-col items-center gap-2 py-8 text-muted-foreground">
-                            <Box className="h-8 w-8" />
-                            <p className="text-sm">Nenhum House vinculado a este Master</p>
-                          </div>
-                        )}
-
-                        {candidateHouses.length > 0 && (
-                          <div className="pt-4 min-w-0">
-                            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
-                              Candidatos no mesmo container
-                            </p>
-                            {candidateHouses.map((h) => (
-                              <div key={h.id} className="flex items-center justify-between rounded-lg border border-dashed p-3 gap-2 mb-2 min-w-0">
-                                <div className="min-w-0">
-                                  <p className="font-semibold text-sm text-primary-900 truncate">{h.numeroHbl}</p>
-                                  <p className="text-xs text-muted-foreground truncate">{h.containerNumber}</p>
-                                </div>
-                                {canEdit && (
-                                  <Button size="sm" variant="secondary" disabled={saving} onClick={() => void handleLink(h.id)}>
-                                    <Link2 className="h-3.5 w-3.5" />
-                                    Vincular
-                                  </Button>
-                                )}
-                              </div>
-                            ))}
-                          </div>
-                        )}
                       </div>
-                    </TabsContent>
-                  </Tabs>
+                    )}
+                  </div>
                 </CardContent>
               )}
             </>
@@ -533,11 +518,11 @@ function LotBadge({ status }: { status: LotStatus }) {
   )
 }
 
-function Field({ label, value }: { label: string; value: string }) {
+function XmlBadge({ status }: { status: XmlDispatchUiStatus }) {
+  const config = XML_LABELS[status]
   return (
-    <div className="rounded-lg bg-secondary/50 p-3 min-w-0 overflow-hidden">
-      <p className="text-[11px] font-medium text-muted-foreground">{label}</p>
-      <p className="text-sm font-semibold text-primary-900 mt-0.5 break-words">{value}</p>
-    </div>
+    <Badge variant={config.variant} className="text-[10px] px-1.5 py-0 shrink-0 whitespace-nowrap">
+      {config.label}
+    </Badge>
   )
 }

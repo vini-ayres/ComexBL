@@ -10,6 +10,7 @@ interface BlFinalViewProps {
   data: BlFinalResponseDto | null
   loading?: boolean
   error?: string | null
+  highlightHouseNumber?: string
   onRetry?: () => void
 }
 
@@ -23,7 +24,13 @@ function FieldRow({ label, value }: { label: string; value: string | number | nu
   )
 }
 
-export function BlFinalView({ data, loading, error, onRetry }: BlFinalViewProps) {
+export function BlFinalView({
+  data,
+  loading,
+  error,
+  highlightHouseNumber,
+  onRetry,
+}: BlFinalViewProps) {
   if (loading) {
     return <CardSkeleton />
   }
@@ -44,12 +51,14 @@ export function BlFinalView({ data, loading, error, onRetry }: BlFinalViewProps)
       <ApiStatePanel
         variant="empty"
         title="BL Final não disponível"
-        description="Informe o número do Master BL para visualizar os dados consolidados."
+        description="Não foi possível montar o BL Final consolidado deste documento."
       />
     )
   }
 
   const { master, houses } = data
+  const focusedHouseNumber = highlightHouseNumber?.trim()
+  const defaultTab = focusedHouseNumber ? "houses" : "master"
 
   return (
     <Card>
@@ -57,11 +66,13 @@ export function BlFinalView({ data, loading, error, onRetry }: BlFinalViewProps)
         <CardTitle className="flex items-center gap-2">
           <Ship className="h-4 w-4 text-primary-600" />
           BL Final — {data.masterNumber}
-          <Badge variant="outline" className="ml-auto">{data.blVersion}</Badge>
+          <Badge variant={data.blVersion === "FINAL" ? "success" : "outline"} className="ml-auto">
+            {data.blVersion}
+          </Badge>
         </CardTitle>
       </CardHeader>
       <CardContent>
-        <Tabs defaultValue="master">
+        <Tabs defaultValue={defaultTab}>
           <TabsList>
             <TabsTrigger value="master"><Ship className="h-3.5 w-3.5 mr-1" /> Master</TabsTrigger>
             <TabsTrigger value="houses"><Package className="h-3.5 w-3.5 mr-1" /> Houses ({houses.length})</TabsTrigger>
@@ -71,15 +82,19 @@ export function BlFinalView({ data, loading, error, onRetry }: BlFinalViewProps)
 
           <TabsContent value="master" className="mt-4">
             <div className="rounded-lg border border-border p-4">
-              <FieldRow label="Navio" value={master.vesselName} />
-              <FieldRow label="Viagem" value={master.voyage} />
-              <FieldRow label="Embarcador" value={master.shipperName} />
-              <FieldRow label="Consignatário" value={master.consigneeName} />
-              <FieldRow label="Porto origem" value={master.loadingPortName} />
-              <FieldRow label="Porto destino" value={master.dischargePortName} />
-              <FieldRow label="Container" value={master.containerNumber} />
-              <FieldRow label="Peso bruto" value={master.grossWeight} />
-              <FieldRow label="Volume" value={master.volumeMeasure} />
+              <FieldRow label="Master Number" value={master.masterNumber} />
+              <FieldRow label="Vessel Name" value={master.vesselName} />
+              <FieldRow label="Voyage" value={master.voyage} />
+              <FieldRow label="Carrier SCAC" value={master.carrierScacCode} />
+              <FieldRow label="Carrier Name" value={master.carrierName} />
+              <FieldRow label="Freight Term" value={master.freightTerm} />
+              <FieldRow label="Container Number" value={master.containerNumber} />
+              <FieldRow label="Container Seal No 1" value={master.containerSealNo1} />
+              <FieldRow label="Container Type" value={master.containerType} />
+              <FieldRow label="Packing Quantity" value={master.packingQuantity} />
+              <FieldRow label="Packing Quantity Unit" value={master.packingQuantityUnitCode} />
+              <FieldRow label="Gross Weight" value={master.grossWeight} />
+              <FieldRow label="Volume Measure" value={master.volumeMeasure} />
             </div>
           </TabsContent>
 
@@ -88,13 +103,28 @@ export function BlFinalView({ data, loading, error, onRetry }: BlFinalViewProps)
               <p className="text-sm text-muted-foreground">Nenhum house vinculado.</p>
             ) : (
               houses.map((house) => (
-                <div key={house.houseNumber} className="rounded-lg border border-border p-4">
+                <div
+                  key={house.houseNumber}
+                  className={
+                    focusedHouseNumber === house.houseNumber
+                      ? "rounded-lg border border-primary-200 bg-primary-50/40 p-4"
+                      : "rounded-lg border border-border p-4"
+                  }
+                >
                   <p className="font-semibold text-primary-900 mb-2">{house.houseNumber}</p>
-                  <FieldRow label="Embarcador" value={house.shipperName} />
-                  <FieldRow label="Consignatário" value={house.consigneeName} />
-                  <FieldRow label="Mercadoria" value={house.itemName} />
-                  <FieldRow label="Peso bruto" value={house.grossWeight} />
-                  <FieldRow label="Volumes" value={house.packingQuantity} />
+                  <FieldRow label="Shipper Name" value={house.shipperName} />
+                  <FieldRow label="Consignee Name" value={house.consigneeName} />
+                  <FieldRow label="Notify Name" value={house.notifyName} />
+                  <FieldRow label="Freight Term" value={house.freightTerm} />
+                  <FieldRow label="Loading Port Name" value={house.loadingPortName} />
+                  <FieldRow label="Discharge Port Name" value={house.dischargePortName} />
+                  <FieldRow label="Delivery Port Name" value={house.deliveryPortName} />
+                  <FieldRow label="Container Number" value={house.container.containerNumber} />
+                  <FieldRow label="Packing Quantity" value={house.packingQuantity} />
+                  <FieldRow label="Gross Weight" value={house.grossWeight} />
+                  <FieldRow label="Volume Measure" value={house.volumeMeasure} />
+                  <FieldRow label="Issue Date" value={house.issueDate} />
+                  <FieldRow label="Item Name" value={house.itemName} />
                 </div>
               ))
             )}
@@ -111,11 +141,12 @@ export function BlFinalView({ data, loading, error, onRetry }: BlFinalViewProps)
                     className="rounded-lg border border-border p-4"
                   >
                     <p className="text-xs text-muted-foreground mb-2">{house.houseNumber}</p>
-                    <FieldRow label="Tipo" value={cargo.cargoType} />
-                    <FieldRow label="Marca" value={cargo.brand} />
-                    <FieldRow label="Embalagem" value={cargo.packaging} />
-                    <FieldRow label="Classe perigo" value={cargo.hazardClass} />
-                    <FieldRow label="UN" value={cargo.unNumber} />
+                    <FieldRow label="Brand" value={cargo.brand} />
+                    <FieldRow label="Counter Mark" value={cargo.counterMark} />
+                    <FieldRow label="Cargo Type" value={cargo.cargoType} />
+                    <FieldRow label="Hazard Class" value={cargo.hazardClass} />
+                    <FieldRow label="UN Number" value={cargo.unNumber} />
+                    <FieldRow label="Packaging" value={cargo.packaging} />
                   </div>
                 )),
               )

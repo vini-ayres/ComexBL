@@ -162,7 +162,7 @@ export function FinalizadoProcessNavigator({
             Nenhum processo encontrado.
           </p>
         ) : (
-          <ScrollArea className="h-[min(420px,calc(100vh-320px))]">
+          <ScrollArea className="h-[min(510px,calc(100vh-240px))]">
             <div className="space-y-1 pr-3">
               {items.map((item) => {
                 const isActive = item.numeroBl === currentDocumentNumber && item.tipo === currentTipo

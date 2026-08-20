@@ -28,11 +28,15 @@ export function updateMasterHblCount(id: number, hblCount: number) {
   return apiPatch<BlMasterDetailDto>(`/bl/masters/${id}/hbl-count`, { hblCount })
 }
 
-export function dispatchMasterXml(id: number, force = false) {
+export function dispatchMasterXml(id: number, force = false, houseId?: number) {
   return apiPost<{ lot: BlMasterDetailDto; evaluation: XmlDispatchEvaluationDto }>(
     `/bl/masters/${id}/xml-dispatch`,
-    { force },
+    { force, houseId },
   )
+}
+
+export function validacaoManualMaster(id: number) {
+  return apiPost<BlMasterDetailDto>(`/bl/masters/${id}/validacao-manual`)
 }
 
 export function linkHouseToMaster(masterId: number, houseId: number) {

@@ -78,7 +78,7 @@ export function escapeSqlServerValue(value: string): string {
   return `{${escaped}}`;
 }
 
-function buildDatabaseUrl(options: {
+export function buildDatabaseUrl(options: {
   server: string;
   port: number;
   user: string;

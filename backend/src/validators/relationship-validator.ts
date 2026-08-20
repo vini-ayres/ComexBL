@@ -109,18 +109,10 @@ export class RelationshipValidator {
   }
 
   validateDocumentConsistency(
-    master: BlMaster,
+    _master: BlMaster,
     houses: BlHouse[],
   ): RelationshipValidationIssue[] {
     const issues: RelationshipValidationIssue[] = [];
-
-    if (master.HBLCount != null && houses.length !== master.HBLCount) {
-      issues.push({
-        code: 'HBL_COUNT_MISMATCH',
-        message: `HBLCount=${master.HBLCount}, mas ${houses.length} house(s) vinculado(s)`,
-        field: 'HBLCount',
-      });
-    }
 
     const houseNumbers = new Set<string>();
     for (const house of houses) {

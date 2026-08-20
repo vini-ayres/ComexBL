@@ -2,9 +2,9 @@ import type { Prisma } from '@prisma/client';
 import type { BlHouseCargo, BlHouseNcm } from '@prisma/client';
 import { prisma } from '../prisma/client.js';
 import {
+  APOIO_HUMANO_MASTER_SCALAR_FIELDS,
   CARGO_COMPARABLE_FIELDS,
   HOUSE_SCALAR_FIELDS,
-  MASTER_SCALAR_FIELDS,
 } from '../constants/bl-comparison.constants.js';
 import type { SaveApoioHumanoCampoInput } from '../types/apoio-humano.types.js';
 import {
@@ -13,21 +13,16 @@ import {
 } from '../utils/comparison.utils.js';
 
 const MASTER_SCALAR_KEYS = new Set(
-  MASTER_SCALAR_FIELDS.map((field) => field.key),
+  APOIO_HUMANO_MASTER_SCALAR_FIELDS.map((field) => field.key),
 );
 const HOUSE_SCALAR_KEYS = new Set(HOUSE_SCALAR_FIELDS.map((field) => field.key));
 
-const MASTER_INT_FIELDS = new Set(['HBLCount', 'PackingQuantity']);
+const MASTER_INT_FIELDS = new Set(['PackingQuantity']);
 const MASTER_DECIMAL_FIELDS = new Set(['GrossWeight', 'VolumeMeasure']);
-const MASTER_DATE_FIELDS = new Set(['OnboardDate', 'ArrivalDate']);
+const MASTER_DATE_FIELDS = new Set<string>();
 
-const HOUSE_INT_FIELDS = new Set(['PackingQuantity', 'ContainerQTY']);
-const HOUSE_DECIMAL_FIELDS = new Set([
-  'GrossWeight',
-  'VolumeMeasure',
-  'ContainerGWT',
-  'ContainerCBM',
-]);
+const HOUSE_INT_FIELDS = new Set(['PackingQuantity']);
+const HOUSE_DECIMAL_FIELDS = new Set(['GrossWeight', 'VolumeMeasure']);
 const HOUSE_DATE_FIELDS = new Set(['IssueDate']);
 
 const CARGO_FIELD_SET = new Set<string>(CARGO_COMPARABLE_FIELDS);

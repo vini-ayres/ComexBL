@@ -12,7 +12,7 @@ import { motion } from "framer-motion"
 import { ApiError } from "@/lib/api/client"
 import { fetchProcessoTimeline } from "@/lib/api/processo"
 import { fetchWorkflow } from "@/lib/api/workflow"
-import { fetchBlFinal } from "@/lib/api/bl-final"
+import { fetchDocumentBlFinal } from "@/lib/api/bl-final"
 import type {
   BlFinalResponseDto,
   DashboardBlListItemDto,
@@ -37,6 +37,7 @@ export default function ProcessoFinalizado() {
   const [workflow, setWorkflow] = useState<WorkflowSummaryDto | null>(null)
   const [timeline, setTimeline] = useState<ProcessoTimelineResponseDto | null>(null)
   const [blFinal, setBlFinal] = useState<BlFinalResponseDto | null>(null)
+  const [blFinalError, setBlFinalError] = useState<string | null>(null)
 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -67,6 +68,7 @@ export default function ProcessoFinalizado() {
           const params = buildDocumentSearchParams({
             tipo: first.tipo,
             documentNumber: first.numeroBl,
+            masterNumber: first.masterNumber,
           })
           navigate(`/processo-finalizado?${params}`, { replace: true })
         }
@@ -99,7 +101,7 @@ export default function ProcessoFinalizado() {
       const [workflowResult, timelineResult, blFinalResult] = await Promise.allSettled([
         fetchWorkflow(tipo, documentNumber),
         fetchProcessoTimeline(tipo, documentNumber),
-        fetchBlFinal(masterNumber),
+        fetchDocumentBlFinal(tipo, documentNumber, masterNumber),
       ])
 
       if (workflowResult.status === "fulfilled") {
@@ -117,8 +119,15 @@ export default function ProcessoFinalizado() {
 
       if (blFinalResult.status === "fulfilled") {
         setBlFinal(blFinalResult.value)
+        setBlFinalError(null)
       } else {
         setBlFinal(null)
+        const reason = blFinalResult.reason
+        setBlFinalError(
+          reason instanceof ApiError
+            ? reason.message
+            : "Não foi possível carregar o BL Final deste documento.",
+        )
       }
     } catch (err) {
       const message = err instanceof ApiError
@@ -139,6 +148,7 @@ export default function ProcessoFinalizado() {
     const params = buildDocumentSearchParams({
       tipo: item.tipo,
       documentNumber: item.numeroBl,
+      masterNumber: item.masterNumber,
     })
     navigate(`/processo-finalizado?${params}`)
   }
@@ -201,12 +211,10 @@ export default function ProcessoFinalizado() {
   const divergenciasEncontradas = resolvedEvents.filter((e) => e.eventType === "divergencia").length
   const divergenciasResolvidas = resolvedEvents.filter((e) => e.eventType === "resolucao_divergencia").length
 
-  const firstEvent = timeline.events[0]
+  const firstEvent = timeline.events.find((event) => event.eventType === "ocr_ingestao")
+    ?? timeline.events[0]
   const lastEvent = timeline.events[timeline.events.length - 1]
-  const tempoProcessamento =
-    firstEvent && lastEvent
-      ? `${Math.max(1, Math.round((new Date(lastEvent.occurredAt).getTime() - new Date(firstEvent.occurredAt).getTime()) / 60000))} min`
-      : "—"
+  const tempoProcessamento = formatProcessDuration(firstEvent?.occurredAt, lastEvent?.occurredAt)
 
   return (
     <div className="flex flex-col lg:flex-row gap-6 items-start">
@@ -229,7 +237,7 @@ export default function ProcessoFinalizado() {
             <div className="min-w-0">
               <h2 className="text-lg font-bold text-primary-900 truncate">{documentNumber}</h2>
               <p className="text-xs text-muted-foreground">
-                {tipo} · Finalizado · {timeline.workflowStatus ?? workflow?.status ?? "—"}
+                {tipo} · {blFinal?.blVersion ?? timeline.blVersion ?? workflow?.blVersion ?? "FINAL"} · Finalizado
               </p>
             </div>
           </div>
@@ -306,7 +314,10 @@ export default function ProcessoFinalizado() {
 
           <TabsContent value="bl-final" className="mt-4">
             <BlFinalView
+              key={`${tipo}-${documentNumber}`}
               data={blFinal}
+              error={blFinalError}
+              highlightHouseNumber={tipo === "House" ? documentNumber : undefined}
               onRetry={() => void loadData()}
             />
           </TabsContent>
@@ -371,6 +382,25 @@ function StatChip({
       <p className="text-sm font-bold text-primary-900 mt-0.5 truncate">{value}</p>
     </div>
   )
+}
+
+function formatProcessDuration(startedAt?: string, finishedAt?: string): string {
+  if (!startedAt || !finishedAt) {
+    return "—"
+  }
+
+  const totalMinutes = Math.max(
+    0,
+    Math.round((new Date(finishedAt).getTime() - new Date(startedAt).getTime()) / 60000),
+  )
+
+  if (totalMinutes < 60) {
+    return `${Math.max(1, totalMinutes)} min`
+  }
+
+  const hours = Math.floor(totalMinutes / 60)
+  const minutes = totalMinutes % 60
+  return minutes > 0 ? `${hours}h ${minutes}min` : `${hours}h`
 }
 
 function WorkflowRow({ label, value }: { label: string; value: React.ReactNode }) {

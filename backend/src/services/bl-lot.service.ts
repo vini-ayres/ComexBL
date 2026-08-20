@@ -1,17 +1,31 @@
-import type { BlHouse, BlMaster, BlWorkflow, BlXmlDispatch } from '@prisma/client';
+import type { BlHouse, BlMaster, BlWorkflow, Prisma } from '@prisma/client';
 import { isBlVersion, type BlVersion } from '../constants/bl-version.constants.js';
+import { MASTER_HBL_COUNT } from '../constants/xml-dispatch.constants.js';
+import {
+  CONFERENCIA_CAMPO_STATUS,
+  CONFERENCIA_HEADER_STATUS,
+} from '../constants/conferencia-house-master.constants.js';
+import {
+  DIVERGENCIA_CAMPO_STATUS,
+  DIVERGENCIA_HEADER_STATUS,
+} from '../constants/divergencia-resolution.constants.js';
+import { PRISMA_EXTENDED_TRANSACTION_OPTIONS } from '../constants/prisma.constants.js';
 import { logger } from '../config/logger.js';
 import { BadRequestError, NotFoundError } from '../errors/AppError.js';
 import { computeLotStatus } from '../domain/lot/lot-status.js';
 import {
+  aggregateXmlDispatchStatus,
   asWorkflowStatus,
   formatMasterCreatedAt,
   groupHousesByMasterId,
+  groupXmlDispatchesByMasterId,
   indexByMasterId,
+  indexXmlDispatchesByHouseId,
   indexWorkflowsByHouseId,
   mapLotHouse,
   xmlDispatchFromRecord,
 } from '../mappers/bl-lot.mapper.js';
+import { prisma } from '../prisma/client.js';
 import { BlHistoricoAlteracaoRepository } from '../repositories/bl-historico-alteracao.repository.js';
 import { BlHouseRepository } from '../repositories/bl-house.repository.js';
 import { BlMasterRepository } from '../repositories/bl-master.repository.js';
@@ -26,6 +40,10 @@ import type {
 import type { PaginatedResult, PaginationQuery } from '../types/bl.types.js';
 import { buildPaginatedResult } from '../utils/pagination.js';
 import type { GlobalSysXmlDispatchService } from './globalsys-xml-dispatch.service.js';
+import type { WorkflowService } from './workflow.service.js';
+
+const VALIDACAO_MANUAL_PENDENCIA =
+  'Validação manual — corrigido no GlobalSys';
 
 function normalizeContainerNumber(value: string | null | undefined): string | null {
   if (value == null) {
@@ -49,6 +67,7 @@ export class BlLotService {
     private readonly xmlDispatchRepository: BlXmlDispatchRepository,
     private readonly historicoRepository: BlHistoricoAlteracaoRepository,
     private readonly xmlDispatchService: GlobalSysXmlDispatchService,
+    private readonly workflowService: WorkflowService,
   ) {}
 
   async listMasters(
@@ -80,10 +99,14 @@ export class BlLotService {
       linked.map((house) => house.Id),
     );
     const workflowByHouseId = indexWorkflowsByHouseId(houseWorkflows);
-    const xmlDispatch = await this.xmlDispatchRepository.findByMasterId(id);
+    const xmlDispatches = await this.xmlDispatchRepository.findByMasterId(id);
+    const xmlByHouseId = indexXmlDispatchesByHouseId(xmlDispatches);
 
     const houses = linked.map((house) =>
-      mapLotHouse(house, workflowByHouseId.get(house.Id), { candidate: false }),
+      mapLotHouse(house, workflowByHouseId.get(house.Id), {
+        candidate: false,
+        xmlDispatch: xmlByHouseId.get(house.Id),
+      }),
     );
 
     const candidateHouses = await this.findCandidateHouses(
@@ -118,20 +141,22 @@ export class BlLotService {
       ).toISOString(),
       houses,
       candidateHouses,
-      xmlDispatchError: xmlDispatch?.LastError ?? null,
-      xmlDispatchedAt: xmlDispatch?.DispatchedAt?.toISOString() ?? null,
+      xmlDispatchError:
+        xmlDispatches.find((item) => item.LastError)?.LastError ?? null,
+      xmlDispatchedAt:
+        xmlDispatches
+          .map((item) => item.DispatchedAt)
+          .filter((value): value is Date => value != null)
+          .sort((a, b) => b.getTime() - a.getTime())[0]
+          ?.toISOString() ?? null,
     };
   }
 
   async updateHblCount(
     masterId: number,
-    hblCount: number,
+    _hblCount: number,
     actor: LotActor,
   ): Promise<BlLotDetailDto> {
-    if (!Number.isInteger(hblCount) || hblCount < 1) {
-      throw new BadRequestError('HBLCount deve ser um inteiro maior que zero');
-    }
-
     const found = await this.masterRepository.findById(masterId);
 
     if (!found) {
@@ -139,14 +164,14 @@ export class BlLotService {
     }
 
     const previous = found.master.HBLCount;
-    await this.masterRepository.updateHblCount(masterId, hblCount);
+    await this.masterRepository.updateHblCount(masterId, MASTER_HBL_COUNT);
     await this.historicoRepository.create({
       blMasterId: masterId,
       userId: actor.userId,
       usuario: actor.displayName,
       campo: 'HBLCount',
       valorAntes: previous == null ? '' : String(previous),
-      valorDepois: String(hblCount),
+      valorDepois: String(MASTER_HBL_COUNT),
       acao: 'correcao_lote',
     });
 
@@ -235,13 +260,116 @@ export class BlLotService {
   async dispatchXml(
     masterId: number,
     force: boolean,
+    houseId?: number,
   ): Promise<{ lot: BlLotDetailDto; evaluation: XmlDispatchEvaluationDto }> {
     const evaluation = await this.xmlDispatchService.evaluateAndDispatchByMasterId(
       masterId,
-      { force },
+      { force, houseId },
     );
     const lot = await this.getMasterLot(masterId);
     return { lot, evaluation };
+  }
+
+  async validacaoManual(
+    masterId: number,
+    actor: LotActor,
+  ): Promise<BlLotDetailDto> {
+    const found = await this.masterRepository.findById(masterId);
+
+    if (!found) {
+      throw new NotFoundError(`BL Master ${masterId} não encontrado`);
+    }
+
+    if (!isBlVersion(found.master.BlVersion)) {
+      throw new BadRequestError(
+        `BlVersion inválido no Master ${found.master.MasterNumber}`,
+      );
+    }
+
+    const blVersion = found.master.BlVersion;
+    const linkedHouses = found.houses;
+    const [masterWorkflow, houseWorkflows] = await Promise.all([
+      this.workflowRepository.findByMasterId(masterId),
+      this.workflowRepository.findByHouseIds(linkedHouses.map((house) => house.Id)),
+    ]);
+    const workflowByHouseId = indexWorkflowsByHouseId(houseWorkflows);
+    const housesAlreadyFinalized = linkedHouses.every(
+      (house) => workflowByHouseId.get(house.Id)?.Status === 'finalizado',
+    );
+
+    if (masterWorkflow?.Status === 'finalizado' && housesAlreadyFinalized) {
+      throw new BadRequestError('Este lote já está concluído');
+    }
+
+    const previousStatus = masterWorkflow?.Status ?? 'processando';
+    const workflowData = {
+      status: 'finalizado',
+      pendencia: VALIDACAO_MANUAL_PENDENCIA,
+      skipXmlDispatch: true,
+      ...(actor.userId != null ? { responsavelUserId: actor.userId } : {}),
+    };
+    const resolvedAt = new Date();
+
+    await prisma.$transaction(async (tx) => {
+      await this.workflowService.updateWorkflowByMasterNumberAndVersion(
+        found.master.MasterNumber,
+        blVersion,
+        workflowData,
+        tx,
+      );
+
+      for (const house of linkedHouses) {
+        if (workflowByHouseId.get(house.Id)?.Status === 'finalizado') {
+          continue;
+        }
+
+        if (!isBlVersion(house.BlVersion)) {
+          throw new BadRequestError(
+            `BlVersion inválido no House ${house.HouseNumber}`,
+          );
+        }
+
+        await this.workflowService.updateWorkflowByHouseNumberAndVersion(
+          house.HouseNumber,
+          house.BlVersion,
+          workflowData,
+          tx,
+        );
+      }
+
+      await this.closePendingOperationalRecords(
+        tx,
+        masterId,
+        linkedHouses.map((house) => house.Id),
+        actor,
+        resolvedAt,
+      );
+
+      await this.historicoRepository.create(
+        {
+          blMasterId: masterId,
+          userId: actor.userId,
+          usuario: actor.displayName,
+          campo: 'Workflow.Status',
+          valorAntes: previousStatus,
+          valorDepois: 'finalizado',
+          acao: 'validacao_manual',
+          createdAt: resolvedAt,
+        },
+        tx,
+      );
+    }, PRISMA_EXTENDED_TRANSACTION_OPTIONS);
+
+    logger.info('Validação manual concluída no lote Master/House', {
+      masterId,
+      masterNumber: found.master.MasterNumber,
+      blVersion,
+      previousStatus,
+      houseCount: linkedHouses.length,
+      usuario: actor.displayName,
+    });
+
+    return this.getMasterLot(masterId);
   }
 
   private async enrichMasters(masters: BlMaster[]): Promise<BlLotSummaryDto[]> {
@@ -257,10 +385,8 @@ export class BlLotService {
     ]);
 
     const workflowByMasterId = indexByMasterId(masterWorkflows);
-    const xmlByMasterId = new Map<number, BlXmlDispatch>();
-    for (const item of xmlDispatches) {
-      xmlByMasterId.set(item.BlMasterId, item);
-    }
+    const xmlByMasterId = groupXmlDispatchesByMasterId(xmlDispatches);
+    const xmlByHouseId = indexXmlDispatchesByHouseId(xmlDispatches);
 
     const housesByMasterId = groupHousesByMasterId(linkedHouses);
     const houseWorkflows = await this.workflowRepository.findByHouseIds(
@@ -270,18 +396,18 @@ export class BlLotService {
 
     return masters.map((master) => {
       const houses = housesByMasterId.get(master.Id) ?? [];
+      const masterXml = xmlByMasterId.get(master.Id) ?? [];
       const finalizedHouseCount = houses.filter(
         (house) => workflowByHouseId.get(house.Id)?.Status === 'finalizado',
       ).length;
       const masterWorkflow = workflowByMasterId.get(master.Id);
-      const xmlStatus = xmlDispatchFromRecord(xmlByMasterId.get(master.Id));
-      const hblCount = master.HBLCount;
+      const xmlStatus = aggregateXmlDispatchStatus(masterXml, houses.length);
       const lotStatus = computeLotStatus({
-        hblCount,
         masterFinalized: masterWorkflow?.Status === 'finalizado',
-        linkedCount: houses.length,
-        finalizedHouseCount,
-        xmlStatus,
+        houses: houses.map((house) => ({
+          houseFinalized: workflowByHouseId.get(house.Id)?.Status === 'finalizado',
+          xmlStatus: xmlDispatchFromRecord(xmlByHouseId.get(house.Id)),
+        })),
       });
 
       return {
@@ -299,14 +425,14 @@ export class BlLotService {
         volumesTotal: master.PackingQuantity ?? 0,
         createdAt: formatMasterCreatedAt(master),
         blVersion: master.BlVersion,
-        hblCount,
+        hblCount: MASTER_HBL_COUNT,
         containerNumber: master.ContainerNumber,
         houseCount: houses.length,
         finalizedHouseCount,
         workflowStatus: asWorkflowStatus(masterWorkflow?.Status),
         xmlDispatchStatus: xmlStatus,
         lotStatus,
-        partlot: (hblCount ?? 0) > 1,
+        partlot: houses.length > 1,
       };
     });
   }
@@ -343,6 +469,75 @@ export class BlLotService {
         { candidate: true },
       ),
     );
+  }
+
+  private async closePendingOperationalRecords(
+    tx: Prisma.TransactionClient,
+    masterId: number,
+    houseIds: number[],
+    actor: LotActor,
+    resolvedAt: Date,
+  ): Promise<void> {
+    const documentFilter = {
+      OR: [
+        { BlMasterId: masterId },
+        ...(houseIds.length > 0 ? [{ BlHouseId: { in: houseIds } }] : []),
+      ],
+    };
+
+    const divergencias = await tx.blDivergencia.findMany({
+      where: {
+        ...documentFilter,
+        Status: { not: DIVERGENCIA_HEADER_STATUS.RESOLVIDO },
+      },
+      select: { Id: true },
+    });
+
+    if (divergencias.length > 0) {
+      const ids = divergencias.map((item) => item.Id);
+      await tx.blDivergenciaCampo.updateMany({
+        where: {
+          BlDivergenciaId: { in: ids },
+          Status: DIVERGENCIA_CAMPO_STATUS.PENDENTE,
+        },
+        data: { Status: DIVERGENCIA_CAMPO_STATUS.RESOLVIDO_GLOBALSYS },
+      });
+      await tx.blDivergencia.updateMany({
+        where: { Id: { in: ids } },
+        data: {
+          Status: DIVERGENCIA_HEADER_STATUS.RESOLVIDO,
+          ResolvedAt: resolvedAt,
+          ResolvedByUserId: actor.userId,
+        },
+      });
+    }
+
+    const conferencias = await tx.blConferencia.findMany({
+      where: {
+        ...documentFilter,
+        Status: { not: CONFERENCIA_HEADER_STATUS.RESOLVIDO },
+      },
+      select: { Id: true },
+    });
+
+    if (conferencias.length > 0) {
+      const ids = conferencias.map((item) => item.Id);
+      await tx.blConferenciaCampo.updateMany({
+        where: {
+          BlConferenciaId: { in: ids },
+          Status: CONFERENCIA_CAMPO_STATUS.PENDENTE,
+        },
+        data: { Status: CONFERENCIA_CAMPO_STATUS.RESOLVIDO_MANUAL },
+      });
+      await tx.blConferencia.updateMany({
+        where: { Id: { in: ids } },
+        data: {
+          Status: CONFERENCIA_HEADER_STATUS.RESOLVIDO,
+          ResolvedAt: resolvedAt,
+          ResolvedByUserId: actor.userId,
+        },
+      });
+    }
   }
 
   private async requireHouseOfMaster(

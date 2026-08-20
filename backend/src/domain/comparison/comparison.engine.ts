@@ -40,18 +40,6 @@ const MASTER_SCALAR_FIELDS: readonly ScalarFieldSpec[] = [
     read: (document) => (document as CanonicalMasterBl).masterNumber,
   },
   {
-    path: 'referenceNumber',
-    field: 'ReferenceNumber',
-    category: ComparisonCategory.GENERAL,
-    read: (document) => (document as CanonicalMasterBl).referenceNumber,
-  },
-  {
-    path: 'blTypeExportImport',
-    field: 'BlTypeExportImport',
-    category: ComparisonCategory.GENERAL,
-    read: (document) => (document as CanonicalMasterBl).blTypeExportImport,
-  },
-  {
     path: 'vesselName',
     field: 'VesselName',
     category: ComparisonCategory.GENERAL,
@@ -64,24 +52,6 @@ const MASTER_SCALAR_FIELDS: readonly ScalarFieldSpec[] = [
     read: (document) => (document as CanonicalMasterBl).voyage,
   },
   {
-    path: 'onboardDate',
-    field: 'OnboardDate',
-    category: ComparisonCategory.GENERAL,
-    read: (document) => (document as CanonicalMasterBl).onboardDate,
-  },
-  {
-    path: 'arrivalDate',
-    field: 'ArrivalDate',
-    category: ComparisonCategory.GENERAL,
-    read: (document) => (document as CanonicalMasterBl).arrivalDate,
-  },
-  {
-    path: 'hblCount',
-    field: 'HblCount',
-    category: ComparisonCategory.GENERAL,
-    read: (document) => (document as CanonicalMasterBl).hblCount,
-  },
-  {
     path: 'carrierScacCode',
     field: 'CarrierScacCode',
     category: ComparisonCategory.GENERAL,
@@ -92,24 +62,6 @@ const MASTER_SCALAR_FIELDS: readonly ScalarFieldSpec[] = [
     field: 'CarrierName',
     category: ComparisonCategory.GENERAL,
     read: (document) => (document as CanonicalMasterBl).carrierName,
-  },
-  {
-    path: 'cargoTypeLclFclBulk',
-    field: 'CargoTypeLclFclBulk',
-    category: ComparisonCategory.GENERAL,
-    read: (document) => (document as CanonicalMasterBl).cargoTypeLclFclBulk,
-  },
-  {
-    path: 'loadType',
-    field: 'LoadType',
-    category: ComparisonCategory.GENERAL,
-    read: (document) => (document as CanonicalMasterBl).loadType,
-  },
-  {
-    path: 'serviceTerm',
-    field: 'ServiceTerm',
-    category: ComparisonCategory.GENERAL,
-    read: (document) => (document as CanonicalMasterBl).serviceTerm,
   },
   {
     path: 'freightTerm',
@@ -143,40 +95,6 @@ const MASTER_SCALAR_FIELDS: readonly ScalarFieldSpec[] = [
   },
 ];
 
-const MASTER_PARTY_FIELDS: readonly PartyFieldSpec[] = [
-  {
-    pathPrefix: 'shipper',
-    read: (document) => (document as CanonicalMasterBl).shipper,
-  },
-  {
-    pathPrefix: 'consignee',
-    read: (document) => (document as CanonicalMasterBl).consignee,
-  },
-  {
-    pathPrefix: 'notify',
-    read: (document) => (document as CanonicalMasterBl).notify,
-  },
-];
-
-const MASTER_PORT_FIELDS: readonly PortFieldSpec[] = [
-  {
-    pathPrefix: 'loadingPort',
-    read: (document) => (document as CanonicalMasterBl).loadingPort,
-  },
-  {
-    pathPrefix: 'dischargePort',
-    read: (document) => (document as CanonicalMasterBl).dischargePort,
-  },
-  {
-    pathPrefix: 'deliveryPort',
-    read: (document) => (document as CanonicalMasterBl).deliveryPort,
-  },
-  {
-    pathPrefix: 'finalDestinationPort',
-    read: (document) => (document as CanonicalMasterBl).finalDestinationPort,
-  },
-];
-
 const HOUSE_SCALAR_FIELDS: readonly ScalarFieldSpec[] = [
   {
     path: 'houseNumber',
@@ -185,40 +103,10 @@ const HOUSE_SCALAR_FIELDS: readonly ScalarFieldSpec[] = [
     read: (document) => (document as CanonicalHouseBl).houseNumber,
   },
   {
-    path: 'blCargoTypeExIm',
-    field: 'BlCargoTypeExIm',
-    category: ComparisonCategory.GENERAL,
-    read: (document) => (document as CanonicalHouseBl).blCargoTypeExIm,
-  },
-  {
-    path: 'originalBlMethodCode',
-    field: 'OriginalBlMethodCode',
-    category: ComparisonCategory.GENERAL,
-    read: (document) => (document as CanonicalHouseBl).originalBlMethodCode,
-  },
-  {
-    path: 'serviceTerm',
-    field: 'ServiceTerm',
-    category: ComparisonCategory.GENERAL,
-    read: (document) => (document as CanonicalHouseBl).serviceTerm,
-  },
-  {
-    path: 'freightTerm',
-    field: 'FreightTerm',
-    category: ComparisonCategory.GENERAL,
-    read: (document) => (document as CanonicalHouseBl).freightTerm,
-  },
-  {
     path: 'packingQuantity',
     field: 'PackingQuantity',
     category: ComparisonCategory.GENERAL,
     read: (document) => (document as CanonicalHouseBl).packingQuantity,
-  },
-  {
-    path: 'packingQuantityUnitCode',
-    field: 'PackingQuantityUnitCode',
-    category: ComparisonCategory.GENERAL,
-    read: (document) => (document as CanonicalHouseBl).packingQuantityUnitCode,
   },
   {
     path: 'grossWeight',
@@ -263,24 +151,24 @@ const HOUSE_PARTY_FIELDS: readonly PartyFieldSpec[] = [
 
 const HOUSE_PORT_FIELDS: readonly PortFieldSpec[] = [
   {
-    pathPrefix: 'receiptPort',
-    read: (document) => (document as CanonicalHouseBl).receiptPort,
-  },
-  {
-    pathPrefix: 'loadingPort',
-    read: (document) => (document as CanonicalHouseBl).loadingPort,
-  },
-  {
-    pathPrefix: 'dischargePort',
-    read: (document) => (document as CanonicalHouseBl).dischargePort,
-  },
-  {
     pathPrefix: 'deliveryPort',
     read: (document) => (document as CanonicalHouseBl).deliveryPort,
   },
 ];
 
-const CONTAINER_FIELDS: readonly {
+const HOUSE_CONTAINER_FIELDS: readonly {
+  pathSuffix: string;
+  field: string;
+  read: (container: CanonicalContainer) => string | number | null;
+}[] = [
+  {
+    pathSuffix: 'number',
+    field: 'ContainerNumber',
+    read: (container) => container.number,
+  },
+];
+
+const MASTER_CONTAINER_FIELDS: readonly {
   pathSuffix: string;
   field: string;
   read: (container: CanonicalContainer) => string | number | null;
@@ -299,31 +187,6 @@ const CONTAINER_FIELDS: readonly {
     pathSuffix: 'seal1',
     field: 'SealNo1',
     read: (container) => container.sealNo1,
-  },
-  {
-    pathSuffix: 'seal2',
-    field: 'SealNo2',
-    read: (container) => container.sealNo2,
-  },
-  {
-    pathSuffix: 'quantity',
-    field: 'Quantity',
-    read: (container) => container.quantity,
-  },
-  {
-    pathSuffix: 'unitCode',
-    field: 'UnitCode',
-    read: (container) => container.unitCode,
-  },
-  {
-    pathSuffix: 'grossWeight',
-    field: 'GrossWeight',
-    read: (container) => container.grossWeight,
-  },
-  {
-    pathSuffix: 'cbm',
-    field: 'CBM',
-    read: (container) => container.volume,
   },
 ];
 
@@ -402,7 +265,7 @@ function compareScalar(
   });
 }
 
-function compareParty(
+function comparePartyName(
   pathPrefix: string,
   local: CanonicalParty,
   globalSys: CanonicalParty,
@@ -416,30 +279,14 @@ function compareParty(
     globalSys.name,
     differences,
   );
-  compareScalar(
-    `${pathPrefix}.address`,
-    'Address',
-    ComparisonCategory.PARTY,
-    local.address,
-    globalSys.address,
-    differences,
-  );
 }
 
-function comparePort(
+function comparePortName(
   pathPrefix: string,
   local: CanonicalPort,
   globalSys: CanonicalPort,
   differences: ComparisonDifference[],
 ): void {
-  compareScalar(
-    `${pathPrefix}.code`,
-    'Code',
-    ComparisonCategory.PORT,
-    local.code,
-    globalSys.code,
-    differences,
-  );
   compareScalar(
     `${pathPrefix}.name`,
     'Name',
@@ -450,12 +297,17 @@ function comparePort(
   );
 }
 
-function compareContainer(
+function compareContainerFields(
   local: CanonicalContainer,
   globalSys: CanonicalContainer,
+  fields: readonly {
+    pathSuffix: string;
+    field: string;
+    read: (container: CanonicalContainer) => string | number | null;
+  }[],
   differences: ComparisonDifference[],
 ): void {
-  for (const spec of CONTAINER_FIELDS) {
+  for (const spec of fields) {
     compareScalar(
       `container.${spec.pathSuffix}`,
       spec.field,
@@ -531,15 +383,12 @@ export class ComparisonEngine {
       );
     }
 
-    for (const spec of MASTER_PARTY_FIELDS) {
-      compareParty(spec.pathPrefix, spec.read(local), spec.read(globalSys), differences);
-    }
-
-    for (const spec of MASTER_PORT_FIELDS) {
-      comparePort(spec.pathPrefix, spec.read(local), spec.read(globalSys), differences);
-    }
-
-    compareContainer(local.container, globalSys.container, differences);
+    compareContainerFields(
+      local.container,
+      globalSys.container,
+      MASTER_CONTAINER_FIELDS,
+      differences,
+    );
 
     return buildResult(differences);
   }
@@ -562,14 +411,19 @@ export class ComparisonEngine {
     }
 
     for (const spec of HOUSE_PARTY_FIELDS) {
-      compareParty(spec.pathPrefix, spec.read(local), spec.read(globalSys), differences);
+      comparePartyName(spec.pathPrefix, spec.read(local), spec.read(globalSys), differences);
     }
 
     for (const spec of HOUSE_PORT_FIELDS) {
-      comparePort(spec.pathPrefix, spec.read(local), spec.read(globalSys), differences);
+      comparePortName(spec.pathPrefix, spec.read(local), spec.read(globalSys), differences);
     }
 
-    compareContainer(local.container, globalSys.container, differences);
+    compareContainerFields(
+      local.container,
+      globalSys.container,
+      HOUSE_CONTAINER_FIELDS,
+      differences,
+    );
     compareCargoCollections(local.cargo, globalSys.cargo, differences);
     compareNcmCollections(local.ncm, globalSys.ncm, differences);
 

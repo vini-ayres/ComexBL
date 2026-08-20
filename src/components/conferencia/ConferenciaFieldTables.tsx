@@ -70,7 +70,7 @@ export function ConferenciaFieldTables({
   if (campos.length === 0) {
     return (
       <p className="text-sm text-muted-foreground py-6 text-center">
-        Nenhuma diferença de peso, volume ou embalagem entre House e Master.
+        Nenhuma diferença de quantidade, peso bruto ou volume entre House e Master.
       </p>
     )
   }

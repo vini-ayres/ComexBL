@@ -93,8 +93,26 @@ export class BlLotController {
     }
 
     const force = Boolean((req.body as { force?: unknown })?.force);
-    const result = await this.blLotService.dispatchXml(id, force);
+    const houseId = parseOptionalInt(
+      (req.body as { houseId?: unknown })?.houseId,
+    );
+    const result = await this.blLotService.dispatchXml(
+      id,
+      force,
+      houseId ?? undefined,
+    );
     res.json(result);
+  };
+
+  validacaoManual = async (req: Request, res: Response): Promise<void> => {
+    const id = parseOptionalInt(req.params.id);
+
+    if (!id) {
+      throw new BadRequestError('ID inválido');
+    }
+
+    const lot = await this.blLotService.validacaoManual(id, this.actor(req));
+    res.json(lot);
   };
 
   private actor(req: Request) {

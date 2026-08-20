@@ -1,9 +1,9 @@
 import type { BlHouse, BlHouseCargo, BlHouseNcm, BlMaster } from '@prisma/client';
 import type { Decimal } from '@prisma/client/runtime/library';
 import {
+  APOIO_HUMANO_MASTER_SCALAR_FIELDS,
   CARGO_COMPARABLE_FIELDS,
   HOUSE_SCALAR_FIELDS,
-  MASTER_SCALAR_FIELDS,
 } from '../constants/bl-comparison.constants.js';
 import type {
   ApoioHumanoDocumentoDto,
@@ -27,6 +27,15 @@ const CARGO_FIELD_LABELS: Record<(typeof CARGO_COMPARABLE_FIELDS)[number], strin
   Packaging: 'Packaging',
 };
 
+function isNullOrEmpty(value: string | null | undefined): boolean {
+  if (value == null) {
+    return true;
+  }
+
+  const trimmed = value.trim();
+  return trimmed.length === 0 || trimmed === '-';
+}
+
 function formatValue(
   value: string | number | Decimal | Date | null | undefined,
 ): string {
@@ -41,41 +50,16 @@ function formatValue(
   return String(value).trim();
 }
 
-function computeConfidence(value: string): number {
-  if (!value) {
-    return 42;
-  }
-
-  if (/[?]/.test(value)) {
-    return 39;
-  }
-
-  if (/0/.test(value) && /[A-Za-z]/.test(value)) {
-    return 48;
-  }
-
-  if (value.length < 4) {
-    return 58;
-  }
-
-  return Math.min(97, 82 + (value.length % 15));
-}
-
-function computeStatus(confianca: number): CampoExtraidoStatus {
-  return confianca >= 80 ? 'confirmado' : 'pendente';
-}
-
 function buildCampo(id: string, label: string, rawValue: string): CampoExtraidoDto {
-  const valorRecebido = rawValue || '-';
-  const confianca = computeConfidence(rawValue);
+  const isEmpty = isNullOrEmpty(rawValue);
 
   return {
     id,
     campo: label,
-    valorRecebido,
+    valorRecebido: isEmpty ? '-' : rawValue,
     valorManual: null,
-    confianca,
-    status: computeStatus(confianca),
+    confianca: isEmpty ? 0 : 100,
+    status: isEmpty ? 'pendente' : 'confirmado',
   };
 }
 
@@ -156,7 +140,7 @@ export function mapMasterApoioHumano(master: BlMaster): {
       blVersion: master.BlVersion,
     },
     documento: buildDocumento(master.MasterNumber, master.FileName),
-    campos: mapScalarCampos(master, MASTER_SCALAR_FIELDS),
+    campos: mapScalarCampos(master, APOIO_HUMANO_MASTER_SCALAR_FIELDS),
   };
 }
 
@@ -207,11 +191,24 @@ export function mergeCamposComRevisoes(
       return campo;
     }
 
+    const statusFromRevisao = revisao.Status as CampoExtraidoStatus;
+
+    if (statusFromRevisao === 'editado' || statusFromRevisao === 'confirmado') {
+      return {
+        ...campo,
+        valorManual: revisao.ValorManual,
+        confianca: revisao.Confianca,
+        status: statusFromRevisao,
+      };
+    }
+
+    const effectiveValue = revisao.ValorManual || campo.valorRecebido;
+
     return {
       ...campo,
       valorManual: revisao.ValorManual,
       confianca: revisao.Confianca,
-      status: revisao.Status as CampoExtraidoStatus,
+      status: isNullOrEmpty(effectiveValue) ? 'pendente' : 'confirmado',
     };
   });
 }

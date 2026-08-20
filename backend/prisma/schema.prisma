@@ -72,7 +72,7 @@ model BlMaster {
   divergencias        BlDivergencia[]
   processoEtapas      BlProcessoEtapa[]
   consultasGlobalSys  BlConsultaGlobalSys[]
-  xmlDispatch         BlXmlDispatch?
+  xmlDispatches       BlXmlDispatch[]
   conferencias        BlConferencia[]
 
   @@index([ContainerNumber], map: "IX_BL_Master_ContainerNumber")
@@ -139,6 +139,7 @@ model BlHouse {
   processoEtapas     BlProcessoEtapa[]
   consultasGlobalSys BlConsultaGlobalSys[]
   conferencias       BlConferencia[]
+  xmlDispatch        BlXmlDispatch?
 
   @@index([BLMasterId], map: "IX_BL_House_BLMasterId")
   @@index([ContainerNumber], map: "IX_BL_House_ContainerNumber")
@@ -186,7 +187,8 @@ model BlHouseNcm {
 /// Envio do XML consolidado GlobalSys (um registro por Master+versão, via BlMasterId).
 model BlXmlDispatch {
   Id           Int       @id(map: "PK_BL_XmlDispatch") @default(autoincrement())
-  BlMasterId   Int       @unique(map: "UQ_BL_XmlDispatch_BlMasterId")
+  BlMasterId   Int
+  BlHouseId    Int       @unique(map: "UQ_BL_XmlDispatch_BlHouseId")
   Status       String    @db.VarChar(20)
   DispatchedAt DateTime?
   LastError    String?   @db.NVarChar(1000)
@@ -194,7 +196,9 @@ model BlXmlDispatch {
   UpdatedAt    DateTime  @updatedAt @map("UpdatedAt")
 
   master BlMaster @relation(fields: [BlMasterId], references: [Id], onDelete: Cascade, onUpdate: NoAction, map: "FK_BL_XmlDispatch_BL_Master")
+  house  BlHouse  @relation(fields: [BlHouseId], references: [Id], onDelete: NoAction, onUpdate: NoAction, map: "FK_BL_XmlDispatch_BL_House")
 
+  @@index([BlMasterId], map: "IX_BL_XmlDispatch_BlMasterId")
   @@index([Status], map: "IX_BL_XmlDispatch_Status")
   @@map("BL_XmlDispatch")
 }
@@ -297,7 +301,7 @@ model BlDivergencia {
 model BlDivergenciaCampo {
   Id              Int    @id(map: "PK_BL_DivergenciaCampo") @default(autoincrement())
   BlDivergenciaId Int
-  CampoKey        String @db.VarChar(50)
+  CampoKey        String @db.VarChar(200)
   CampoLabel      String @db.NVarChar(200)
   ValorBlFinal    String @db.NVarChar(500)
   ValorGlobalSys  String @db.NVarChar(500)
@@ -423,7 +427,7 @@ model AppUser {
   @@map("APP_User")
 }
 
-/// Perfil de acesso: Administrador | Supervisor | Operador | Auditor
+/// Perfil de acesso: Administrador | Supervisor | Operador
 model AppRole {
   Id          Int      @id(map: "PK_APP_Role") @default(autoincrement())
   Name        String   @unique(map: "UQ_APP_Role_Name") @db.VarChar(50)
@@ -535,7 +539,7 @@ model AppAuditLog {
   @@map("APP_AuditLog")
 }
 
-/// Configurações de integração: ldap | onedrive | globalsys_db
+/// Configurações de integração: ldap | onedrive | globalsys_db | local_db
 model AppIntegrationConfig {
   Id              Int       @id(map: "PK_APP_IntegrationConfig") @default(autoincrement())
   Type            String    @unique(map: "UQ_APP_IntegrationConfig_Type") @db.VarChar(30)

@@ -129,36 +129,36 @@ describe('ComparisonEngine.compareMaster', () => {
 
   it('detects multiple differences in natural field order', () => {
     const local = createMaster({
-      referenceNumber: 'REF001',
+      vesselName: 'VESSEL A',
       voyage: 'V001',
     });
     const globalSys = createMaster({
-      referenceNumber: 'REF002',
+      vesselName: 'VESSEL B',
       voyage: 'V002',
     });
 
     const result = engine.compareMaster(local, globalSys);
 
     assert.equal(result.differenceCount, 2);
-    assert.equal(result.differences[0]?.path, 'referenceNumber');
+    assert.equal(result.differences[0]?.path, 'vesselName');
     assert.equal(result.differences[1]?.path, 'voyage');
   });
 
   it('detects null vs value as divergence', () => {
-    const local = createMaster({ referenceNumber: null });
-    const globalSys = createMaster({ referenceNumber: 'REF001' });
+    const local = createMaster({ vesselName: null });
+    const globalSys = createMaster({ vesselName: 'VESSEL A' });
 
     const result = engine.compareMaster(local, globalSys);
 
     assert.equal(result.differenceCount, 1);
     assert.equal(result.differences[0]?.reason, ComparisonDifferenceReason.MISSING_LOCAL);
     assert.equal(result.differences[0]?.localValue, null);
-    assert.equal(result.differences[0]?.globalSysValue, 'REF001');
+    assert.equal(result.differences[0]?.globalSysValue, 'VESSEL A');
   });
 
   it('classifies missing global value as MISSING_GLOBAL', () => {
-    const local = createMaster({ referenceNumber: 'REF001' });
-    const globalSys = createMaster({ referenceNumber: null });
+    const local = createMaster({ vesselName: 'VESSEL A' });
+    const globalSys = createMaster({ vesselName: null });
 
     const result = engine.compareMaster(local, globalSys);
 
@@ -167,60 +167,32 @@ describe('ComparisonEngine.compareMaster', () => {
   });
 
   it('does not report difference when both values are null', () => {
-    const local = createMaster({ referenceNumber: null });
-    const globalSys = createMaster({ referenceNumber: null });
+    const local = createMaster({ vesselName: null });
+    const globalSys = createMaster({ vesselName: null });
 
     const result = engine.compareMaster(local, globalSys);
 
     assert.equal(result.equal, true);
     assert.equal(
-      result.differences.some((difference) => difference.path === 'referenceNumber'),
+      result.differences.some((difference) => difference.path === 'vesselName'),
       false,
     );
   });
 
-  it('compares parties field by field', () => {
+  it('does not compare master parties or ports outside the visible field set', () => {
     const local = createMaster({
       shipper: { name: 'Shipper A', address: 'Address A' },
-    });
-    const globalSys = createMaster({
-      shipper: { name: 'Shipper B', address: 'Address A' },
-    });
-
-    const result = engine.compareMaster(local, globalSys);
-
-    assert.equal(result.differenceCount, 1);
-    assert.deepEqual(result.differences[0], {
-      path: 'shipper.name',
-      field: 'Name',
-      category: ComparisonCategory.PARTY,
-      severity: ComparisonSeverity.WARNING,
-      reason: ComparisonDifferenceReason.VALUE_MISMATCH,
-      localValue: 'Shipper A',
-      globalSysValue: 'Shipper B',
-    });
-  });
-
-  it('compares ports field by field', () => {
-    const local = createMaster({
       loadingPort: { code: 'BRSSZ', name: 'Santos' },
     });
     const globalSys = createMaster({
-      loadingPort: { code: 'BRPNG', name: 'Santos' },
+      shipper: { name: 'Shipper B', address: 'Address B' },
+      loadingPort: { code: 'BRPNG', name: 'Paranagua' },
     });
 
     const result = engine.compareMaster(local, globalSys);
 
-    assert.equal(result.differenceCount, 1);
-    assert.deepEqual(result.differences[0], {
-      path: 'loadingPort.code',
-      field: 'Code',
-      category: ComparisonCategory.PORT,
-      severity: ComparisonSeverity.WARNING,
-      reason: ComparisonDifferenceReason.VALUE_MISMATCH,
-      localValue: 'BRSSZ',
-      globalSysValue: 'BRPNG',
-    });
+    assert.equal(result.equal, true);
+    assert.equal(result.differenceCount, 0);
   });
 
   it('compares container fields using domain paths', () => {
@@ -271,7 +243,7 @@ describe('ComparisonEngine.compareHouse', () => {
     assert.equal(result.differenceCount, 0);
   });
 
-  it('detects container, scalar and cargo differences together', () => {
+  it('detects scalar and cargo differences together', () => {
     const local = createHouse({
       grossWeight: '12000',
       container: {
@@ -456,7 +428,7 @@ describe('ComparisonEngine.compareHouse', () => {
     });
   });
 
-  it('compares notify party and delivery port', () => {
+  it('compares notify party name and delivery port name', () => {
     const local = createHouse({
       notify: emptyParty(),
       deliveryPort: emptyPort(),
@@ -470,8 +442,12 @@ describe('ComparisonEngine.compareHouse', () => {
 
     assert.equal(result.differences.some((item) => item.path === 'notify.name'), true);
     assert.equal(
-      result.differences.some((item) => item.path === 'deliveryPort.code'),
+      result.differences.some((item) => item.path === 'deliveryPort.name'),
       true,
+    );
+    assert.equal(
+      result.differences.some((item) => item.path === 'deliveryPort.code'),
+      false,
     );
   });
 
@@ -485,7 +461,7 @@ describe('ComparisonEngine.compareHouse', () => {
     assert.equal(result.differences[0]?.path, 'itemName');
   });
 
-  it('compares container seal and cbm paths', () => {
+  it('does not compare house container fields outside the visible set', () => {
     const local = createHouse({
       container: {
         ...emptyContainer(),
@@ -503,23 +479,7 @@ describe('ComparisonEngine.compareHouse', () => {
 
     const result = engine.compareHouse(local, globalSys);
 
-    assert.deepEqual(result.differences[0], {
-      path: 'container.seal1',
-      field: 'SealNo1',
-      category: ComparisonCategory.CONTAINER,
-      severity: ComparisonSeverity.WARNING,
-      reason: ComparisonDifferenceReason.VALUE_MISMATCH,
-      localValue: 'SEAL-A',
-      globalSysValue: 'SEAL-B',
-    });
-    assert.deepEqual(result.differences[1], {
-      path: 'container.cbm',
-      field: 'CBM',
-      category: ComparisonCategory.CONTAINER,
-      severity: ComparisonSeverity.WARNING,
-      reason: ComparisonDifferenceReason.VALUE_MISMATCH,
-      localValue: '10',
-      globalSysValue: '11',
-    });
+    assert.equal(result.equal, true);
+    assert.equal(result.differenceCount, 0);
   });
 });

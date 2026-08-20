@@ -29,7 +29,7 @@ export interface KPI {
 }
 
 // ------------------------------------------------------------
-// BL Master / House (banco local)
+// Histórico de XML (lote Master/House)
 // ------------------------------------------------------------
 
 export interface Container {
@@ -148,7 +148,7 @@ export interface BLNaoEncontrado {
 // Administração / RBAC / LDAP / Auditoria
 // ------------------------------------------------------------
 
-export type PerfilUsuario = "Administrador" | "Supervisor" | "Operador" | "Auditor"
+export type PerfilUsuario = "Administrador" | "Supervisor" | "Operador"
 
 export interface Usuario {
   id: string

@@ -87,8 +87,21 @@ export class WorkflowService {
         ? await this.getWorkflowByMasterNumberAndVersion(documentNumber, blVersion)
         : await this.getWorkflowByHouseNumberAndVersion(documentNumber, blVersion);
 
-    if (context || blVersion !== BL_VERSION.FINAL) {
+    if (context) {
       return context;
+    }
+
+    if (blVersion !== BL_VERSION.FINAL) {
+      return null;
+    }
+
+    const finalRecord =
+      documentType === 'Master'
+        ? await this.masterRepository.findFinalByMasterNumber(documentNumber)
+        : await this.houseRepository.findFinalByHouseNumber(documentNumber);
+
+    if (finalRecord) {
+      return null;
     }
 
     return documentType === 'Master'
@@ -123,7 +136,17 @@ export class WorkflowService {
       tx,
     );
 
-    this.scheduleXmlDispatchIfFinalized('Master', masterNumber, blVersion, data, tx);
+    this.scheduleXmlDispatchIfFinalized(
+      'Master',
+      masterNumber,
+      blVersion,
+      data,
+      tx,
+    );
+
+    if (blVersion === BL_VERSION.FINAL) {
+      await this.restoreOrphanDraftWorkflow('Master', masterNumber, tx);
+    }
 
     return workflow;
   }
@@ -155,7 +178,17 @@ export class WorkflowService {
       tx,
     );
 
-    this.scheduleXmlDispatchIfFinalized('House', houseNumber, blVersion, data, tx);
+    this.scheduleXmlDispatchIfFinalized(
+      'House',
+      houseNumber,
+      blVersion,
+      data,
+      tx,
+    );
+
+    if (blVersion === BL_VERSION.FINAL) {
+      await this.restoreOrphanDraftWorkflow('House', houseNumber, tx);
+    }
 
     return workflow;
   }
@@ -369,13 +402,19 @@ export class WorkflowService {
       allResolved: boolean;
       pendingCount: number;
       resolvedCount: number;
+      skipXmlDispatch?: boolean;
+      forceXmlDispatch?: boolean;
     },
     tx?: Prisma.TransactionClient,
   ): Promise<BlWorkflow> {
     const workflowData: UpdateWorkflowInput = params.allResolved
       ? {
           status: 'finalizado',
-          pendencia: 'Todas as divergências foram resolvidas',
+          pendencia: params.skipXmlDispatch
+            ? 'Processo finalizado — valores do GlobalSys mantidos'
+            : 'Todas as divergências foram resolvidas — XML gerado para o EDI',
+          skipXmlDispatch: params.skipXmlDispatch,
+          forceXmlDispatch: params.forceXmlDispatch,
         }
       : {
           status: 'divergencia',
@@ -504,6 +543,75 @@ export class WorkflowService {
     }
   }
 
+  /**
+   * Recria workflow de DRAFTs órfãos quando o FINAL já existe.
+   * O upsert antigo reapontava o workflow do DRAFT para o FINAL.
+   */
+  async restoreOrphanDraftWorkflows(): Promise<void> {
+    const orphans = await this.workflowRepository.findOrphanDraftsWithFinalSibling();
+
+    for (const orphan of orphans) {
+      await this.restoreOrphanDraftWorkflow(orphan.tipo, orphan.documentNumber);
+    }
+  }
+
+  private async restoreOrphanDraftWorkflow(
+    documentType: BlDocumentType,
+    documentNumber: string,
+    tx?: Prisma.TransactionClient,
+  ): Promise<void> {
+    const draftWorkflowData: UpdateWorkflowInput = {
+      status: 'finalizado',
+      pendencia: 'DRAFT concluído — processo segue no FINAL',
+      skipXmlDispatch: true,
+    };
+
+    if (documentType === 'Master') {
+      const draft = await this.masterRepository.findDraftByMasterNumber(
+        documentNumber,
+      );
+
+      if (!draft) {
+        return;
+      }
+
+      const existing = await this.workflowRepository.findByMasterId(draft.Id, tx);
+
+      if (existing) {
+        return;
+      }
+
+      await this.updateWorkflowByMasterNumberAndVersion(
+        documentNumber,
+        BL_VERSION.DRAFT,
+        draftWorkflowData,
+        tx,
+      );
+      return;
+    }
+
+    const draft = await this.houseRepository.findDraftByHouseNumber(
+      documentNumber,
+    );
+
+    if (!draft) {
+      return;
+    }
+
+    const existing = await this.workflowRepository.findByHouseId(draft.Id, tx);
+
+    if (existing) {
+      return;
+    }
+
+    await this.updateWorkflowByHouseNumberAndVersion(
+      documentNumber,
+      BL_VERSION.DRAFT,
+      draftWorkflowData,
+      tx,
+    );
+  }
+
   private parseBlVersion(value: string): BlVersion {
     if (!isBlVersion(value)) {
       throw new BadRequestError(`BlVersion inválido: ${value}`);
@@ -523,15 +631,22 @@ export class WorkflowService {
       return;
     }
 
+    if (data.skipXmlDispatch) {
+      return;
+    }
+
     if (!this.xmlDispatchService) {
       return;
     }
+
+    const force = Boolean(data.forceXmlDispatch);
 
     runAfterCommit(Boolean(tx), () =>
       this.xmlDispatchService!.handleWorkflowFinalized(
         documentType,
         documentNumber,
         blVersion,
+        { force },
       ),
     );
   }

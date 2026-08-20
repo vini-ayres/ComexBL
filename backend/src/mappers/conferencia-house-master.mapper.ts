@@ -2,6 +2,7 @@ import type { BlConferencia, BlConferenciaCampo, BlHistoricoAlteracao } from '@p
 import {
   CAMPO_STATUS_TO_STRATEGY,
   CONFERENCIA_HEADER_STATUS,
+  isConferenciaFieldKey,
   type ConferenciaCategoria,
   type ConferenciaResolutionStrategy,
 } from '../constants/conferencia-house-master.constants.js';
@@ -48,7 +49,10 @@ export function mapConferenciaLatestDetail(params: {
   counterpart: ConferenciaCounterpartDto;
   workflow: WorkflowSummaryDto | null;
 }): ConferenciaLatestDetailDto {
-  const pendingCount = params.conferencia.campos.filter(
+  const campos = params.conferencia.campos.filter((campo) =>
+    isConferenciaFieldKey(campo.CampoKey),
+  );
+  const pendingCount = campos.filter(
     (campo) => campo.Status === 'pendente',
   ).length;
 
@@ -60,7 +64,7 @@ export function mapConferenciaLatestDetail(params: {
     createdAt: params.conferencia.CreatedAt.toISOString(),
     updatedAt: params.conferencia.UpdatedAt.toISOString(),
     resolvedAt: params.conferencia.ResolvedAt?.toISOString() ?? null,
-    campos: params.conferencia.campos.map(mapConferenciaCampo),
+    campos: campos.map(mapConferenciaCampo),
     comparisonStatus:
       params.conferencia.Status === CONFERENCIA_HEADER_STATUS.SEM_DIVERGENCIA
         ? 'completo_sem_divergencia'
@@ -169,15 +173,18 @@ export function mapConferenciaResolveResponse(params: {
   workflow: WorkflowSummaryDto | null;
   historicoByCampoKey: Map<string, BlHistoricoAlteracao | null>;
 }): ConferenciaResolveResponseDto {
-  const pendingCampos = params.conferencia.campos.filter(
+  const campos = params.conferencia.campos.filter((campo) =>
+    isConferenciaFieldKey(campo.CampoKey),
+  );
+  const pendingCampos = campos.filter(
     (campo) => campo.Status === 'pendente',
   ).length;
-  const resolvedCampos = params.conferencia.campos.length - pendingCampos;
+  const resolvedCampos = campos.length - pendingCampos;
 
   const summary: ConferenciaResolutionSummaryDto = {
     conferenciaId: params.conferencia.Id,
     status: params.conferencia.Status,
-    totalCampos: params.conferencia.campos.length,
+    totalCampos: campos.length,
     pendingCampos,
     resolvedCampos,
     allResolved: pendingCampos === 0,
@@ -189,7 +196,7 @@ export function mapConferenciaResolveResponse(params: {
     summary,
     conferencia: params.conferenciaDetail,
     workflow: params.workflow,
-    campos: params.conferencia.campos.map((campo) =>
+    campos: campos.map((campo) =>
       mapConferenciaCampoResolutionDetail({
         campo,
         historico: params.historicoByCampoKey.get(campo.CampoKey),

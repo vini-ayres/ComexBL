@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { ColumnDef } from "@tanstack/react-table"
 import {
   Clock, AlertTriangle, UserCog, CheckCircle2, Timer, Search, Filter,
-  Eye, MoreHorizontal, RefreshCcw, Ship, ArrowRight, Loader2, AlertCircle,
+  Eye, RefreshCcw, Ship, Loader2, AlertCircle,
 } from "lucide-react"
 import { KpiCard } from "@/components/shared/KpiCard"
 import { DataTable } from "@/components/shared/DataTable"
@@ -10,17 +10,14 @@ import { StatusBadge } from "@/components/shared/StatusBadge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { fetchDashboard } from "@/lib/api/dashboard"
 import type { DashboardBlListItemDto, DashboardKpiDto } from "@/lib/api/types"
 import type { BLStatus } from "@/types"
 import { ApiError } from "@/lib/api/client"
 import { buildDocumentSearchParams } from "@/hooks/useDocumentParams"
-import { formatDateTime, initials } from "@/lib/utils"
+import { formatDateTime } from "@/lib/utils"
 import { useNavigate } from "react-router-dom"
 import { toast } from "sonner"
 
@@ -92,6 +89,7 @@ export default function Dashboard() {
     const params = buildDocumentSearchParams({
       tipo: item.tipo,
       documentNumber: item.numeroBl,
+      masterNumber: item.masterNumber,
     })
     navigate(`${statusRouteMap[item.status]}?${params}`)
   }
@@ -124,24 +122,22 @@ export default function Dashboard() {
       ),
     },
     {
+      accessorKey: "blVersion",
+      header: "Versão",
+      cell: ({ row }) => {
+        const version = row.original.blVersion?.trim().toUpperCase()
+        const variant = version === "FINAL" ? "success" : version === "DRAFT" ? "warning" : "outline"
+        return (
+          <Badge variant={variant} className="text-[10px]">
+            {version || "—"}
+          </Badge>
+        )
+      },
+    },
+    {
       accessorKey: "pendencia",
       header: "Pendência",
       cell: ({ row }) => <span className="text-sm text-foreground">{row.original.pendencia}</span>,
-    },
-    {
-      accessorKey: "responsavel",
-      header: "Responsável",
-      cell: ({ row }) =>
-        row.original.responsavel ? (
-          <div className="flex items-center gap-2">
-            <Avatar className="h-6 w-6">
-              <AvatarFallback className="text-[10px]">{initials(row.original.responsavel)}</AvatarFallback>
-            </Avatar>
-            <span className="text-sm">{row.original.responsavel}</span>
-          </div>
-        ) : (
-          <span className="text-xs text-muted-foreground italic">Não atribuído</span>
-        ),
     },
     {
       accessorKey: "dataHora",
@@ -156,31 +152,14 @@ export default function Dashboard() {
       id: "acoes",
       header: "Ações",
       cell: ({ row }) => (
-        <div className="flex items-center gap-1">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8"
-            onClick={() => navigateToBl(row.original)}
-          >
-            <Eye className="h-4 w-4" />
-          </Button>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-8 w-8">
-                <MoreHorizontal className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => navigateToBl(row.original)}>
-                <ArrowRight className="h-4 w-4" /> Ver detalhes
-              </DropdownMenuItem>
-              <DropdownMenuItem disabled>
-                <RefreshCcw className="h-4 w-4" /> Reprocessar
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8"
+          onClick={() => navigateToBl(row.original)}
+        >
+          <Eye className="h-4 w-4" />
+        </Button>
       ),
     },
   ], [navigate])
@@ -245,7 +224,7 @@ export default function Dashboard() {
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Buscar BL, navio ou responsável..."
+                placeholder="Buscar BL, navio ou versão..."
                 className="pl-9"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}

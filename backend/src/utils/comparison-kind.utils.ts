@@ -26,7 +26,7 @@ function isCargoOrNcmCampoKey(campoKey: string): boolean {
 /**
  * Infere o tipo de comparação a partir das chaves persistidas em BL_DivergenciaCampo.
  *
- * DRAFT×FINAL usa campoKey PascalCase (ex.: ReferenceNumber, house.123.ShipperName).
+ * DRAFT×FINAL usa campoKey PascalCase (ex.: VesselName, house.123.ShipperName).
  * BL Final×GlobalSys usa campoKey camelCase (ex.: referenceNumber, house.123.shipperName).
  *
  * Campos de carga/NCM compartilham a mesma convenção nos dois fluxos; nesses casos

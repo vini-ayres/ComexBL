@@ -1,6 +1,6 @@
 import type { Prisma } from '@prisma/client';
+import { resolveDivergenciaCampoCategoria } from '../constants/bl-comparison.constants.js';
 import {
-  ComparisonCategory,
   type ComparisonDifference,
   type ComparisonResult,
 } from '../domain/comparison/comparison.types.js';
@@ -8,6 +8,7 @@ import {
   DIVERGENCIA_CAMPO_STATUS,
   DIVERGENCIA_HEADER_STATUS,
 } from '../constants/divergencia-resolution.constants.js';
+import { PRISMA_EXTENDED_TRANSACTION_OPTIONS } from '../constants/prisma.constants.js';
 import { prisma } from '../prisma/client.js';
 
 /**
@@ -18,7 +19,7 @@ import { prisma } from '../prisma/client.js';
  * Mapeamento semântico:
  * - path → CampoKey
  * - field → CampoLabel
- * - category → Categoria
+ * - path → Categoria (master/house/cargo/ncm; a tela ignora general/container/party/port)
  * - localValue → ValorBlFinal (OCR)
  * - globalSysValue → ValorGlobalSys
  *
@@ -26,7 +27,7 @@ import { prisma } from '../prisma/client.js';
  * permanecem disponíveis apenas no ComparisonResult retornado ao caller.
  */
 
-const CAMPO_KEY_MAX_LENGTH = 50;
+const CAMPO_KEY_MAX_LENGTH = 200;
 const VALOR_MAX_LENGTH = 500;
 
 function truncate(value: string, maxLength: number): string {
@@ -41,41 +42,33 @@ function formatPersistedValue(value: string | number | null): string {
   return truncate(String(value), VALOR_MAX_LENGTH);
 }
 
-function mapCategory(category: ComparisonCategory): string {
-  switch (category) {
-    case ComparisonCategory.MASTER:
-      return 'master';
-    case ComparisonCategory.HOUSE:
-      return 'house';
-    case ComparisonCategory.CARGO:
-      return 'cargo';
-    case ComparisonCategory.NCM:
-      return 'ncm';
-    case ComparisonCategory.PARTY:
-      return 'party';
-    case ComparisonCategory.PORT:
-      return 'port';
-    case ComparisonCategory.CONTAINER:
-      return 'container';
-    case ComparisonCategory.GENERAL:
-    default:
-      return 'general';
-  }
-}
-
 function mapDifferenceToCampoRow(
   blDivergenciaId: number,
   difference: ComparisonDifference,
 ): Prisma.BlDivergenciaCampoCreateManyInput {
+  const campoKey = truncate(difference.path, CAMPO_KEY_MAX_LENGTH);
+
   return {
     BlDivergenciaId: blDivergenciaId,
-    CampoKey: truncate(difference.path, CAMPO_KEY_MAX_LENGTH),
+    CampoKey: campoKey,
     CampoLabel: truncate(difference.field, 200),
     ValorBlFinal: formatPersistedValue(difference.localValue),
     ValorGlobalSys: formatPersistedValue(difference.globalSysValue),
     Status: DIVERGENCIA_CAMPO_STATUS.PENDENTE,
-    Categoria: truncate(mapCategory(difference.category), 10),
+    Categoria: resolveDivergenciaCampoCategoria(campoKey),
   };
+}
+
+function uniqueCampoRows(
+  rows: Prisma.BlDivergenciaCampoCreateManyInput[],
+): Prisma.BlDivergenciaCampoCreateManyInput[] {
+  const unique = new Map<string, Prisma.BlDivergenciaCampoCreateManyInput>();
+
+  for (const row of rows) {
+    unique.set(row.CampoKey, row);
+  }
+
+  return [...unique.values()];
 }
 
 export class DivergenciaRepository {
@@ -102,8 +95,10 @@ export class DivergenciaRepository {
       });
 
       await client.blDivergenciaCampo.createMany({
-        data: result.differences.map((difference) =>
-          mapDifferenceToCampoRow(divergencia.Id, difference),
+        data: uniqueCampoRows(
+          result.differences.map((difference) =>
+            mapDifferenceToCampoRow(divergencia.Id, difference),
+          ),
         ),
       });
     };
@@ -113,7 +108,7 @@ export class DivergenciaRepository {
       return;
     }
 
-    await prisma.$transaction(persist);
+    await prisma.$transaction(persist, PRISMA_EXTENDED_TRANSACTION_OPTIONS);
   }
 
   async persistHouseComparison(
@@ -139,8 +134,10 @@ export class DivergenciaRepository {
       });
 
       await client.blDivergenciaCampo.createMany({
-        data: result.differences.map((difference) =>
-          mapDifferenceToCampoRow(divergencia.Id, difference),
+        data: uniqueCampoRows(
+          result.differences.map((difference) =>
+            mapDifferenceToCampoRow(divergencia.Id, difference),
+          ),
         ),
       });
     };
@@ -150,7 +147,7 @@ export class DivergenciaRepository {
       return;
     }
 
-    await prisma.$transaction(persist);
+    await prisma.$transaction(persist, PRISMA_EXTENDED_TRANSACTION_OPTIONS);
   }
 }
 

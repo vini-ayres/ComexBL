@@ -76,10 +76,14 @@ export interface BlHouseSummaryDto {
   containerNumber?: string | null
   linked?: boolean
   candidate?: boolean
+  xmlDispatchStatus?: XmlDispatchUiStatus
+  xmlDispatchedAt?: string | null
+  xmlDispatchError?: string | null
 }
 
 export interface XmlDispatchEvaluationDto {
   dispatched: boolean
+  dispatchedCount: number
   lotStatus: LotStatus
   reason: string
   hblCount: number | null
@@ -184,8 +188,10 @@ export interface DashboardBlListItemDto {
   tipo: "Master" | "House"
   status: BlStatus
   pendencia: string
+  blVersion: string
   responsavel: string | null
   dataHora: string
+  masterNumber?: string
   navio?: string
   viagem?: string
   origem?: string

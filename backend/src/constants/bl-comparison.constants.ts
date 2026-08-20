@@ -1,32 +1,18 @@
-/** Campos escalares comparáveis do Master (exclui Id, BlVersion, Status, metadados OCR). */
+import {
+  BL_FINAL_HOUSE_GLOBALSYS_FIELDS,
+  BL_FINAL_MASTER_GLOBALSYS_FIELDS,
+} from './globalsys-comparison.constants.js';
+
+/**
+ * Campos do Master visíveis e validáveis na interface
+ * (Apoio Humano, divergência DRAFT×FINAL e telas correlatas).
+ */
 export const MASTER_SCALAR_FIELDS = [
-  { key: 'ReferenceNumber', label: 'Reference Number' },
-  { key: 'BLTypeExportImport', label: 'BL Type Export/Import' },
   { key: 'VesselName', label: 'Vessel Name' },
   { key: 'Voyage', label: 'Voyage' },
-  { key: 'OnboardDate', label: 'Onboard Date' },
-  { key: 'ArrivalDate', label: 'Arrival Date' },
-  { key: 'HBLCount', label: 'HBL Count' },
-  { key: 'ShipperName', label: 'Shipper Name' },
-  { key: 'ShipperAddress', label: 'Shipper Address' },
-  { key: 'ConsigneeName', label: 'Consignee Name' },
-  { key: 'ConsigneeAddress', label: 'Consignee Address' },
-  { key: 'NotifyName', label: 'Notify Name' },
-  { key: 'NotifyAddress', label: 'Notify Address' },
   { key: 'CarrierSCACCode', label: 'Carrier SCAC Code' },
   { key: 'CarrierName', label: 'Carrier Name' },
-  { key: 'CargoTypeLclFclBulk', label: 'Cargo Type LCL/FCL/Bulk' },
-  { key: 'LoadType', label: 'Load Type' },
-  { key: 'ServiceTerm', label: 'Service Term' },
   { key: 'FreightTerm', label: 'Freight Term' },
-  { key: 'LoadingPortCode', label: 'Loading Port Code' },
-  { key: 'LoadingPortName', label: 'Loading Port Name' },
-  { key: 'DischargePortCode', label: 'Discharge Port Code' },
-  { key: 'DischargePortName', label: 'Discharge Port Name' },
-  { key: 'DeliveryPortCode', label: 'Delivery Port Code' },
-  { key: 'DeliveryPortName', label: 'Delivery Port Name' },
-  { key: 'FinalDestinationPortCode', label: 'Final Destination Port Code' },
-  { key: 'FinalDestinationPortName', label: 'Final Destination Port Name' },
   { key: 'ContainerNumber', label: 'Container Number' },
   { key: 'ContainerSealNo1', label: 'Container Seal No 1' },
   { key: 'ContainerType', label: 'Container Type' },
@@ -36,40 +22,27 @@ export const MASTER_SCALAR_FIELDS = [
   { key: 'VolumeMeasure', label: 'Volume Measure' },
 ] as const;
 
-/** Campos escalares comparáveis do House. */
+/** Master no Apoio Humano: Packing Quantity Unit Code não entra na validação. */
+export const APOIO_HUMANO_MASTER_SCALAR_FIELDS = MASTER_SCALAR_FIELDS.filter(
+  (field) => field.key !== 'PackingQuantityUnitCode',
+);
+
+/**
+ * Campos escalares do House visíveis e validáveis na interface.
+ * Cargo (Brand, CounterMark, CargoType, HazardClass, UNNumber, Packaging)
+ * e NcmCode entram pelas coleções correspondentes.
+ */
 export const HOUSE_SCALAR_FIELDS = [
   { key: 'ShipperName', label: 'Shipper Name' },
-  { key: 'ShipperAddress', label: 'Shipper Address' },
   { key: 'ConsigneeName', label: 'Consignee Name' },
-  { key: 'ConsigneeAddress', label: 'Consignee Address' },
   { key: 'NotifyName', label: 'Notify Name' },
-  { key: 'NotifyAddress', label: 'Notify Address' },
-  { key: 'BLCargoTypeExIm', label: 'BL Cargo Type Ex/Im' },
-  { key: 'OriginalBLMethodCode', label: 'Original BL Method Code' },
-  { key: 'ServiceTerm', label: 'Service Term' },
-  { key: 'FreightTerm', label: 'Freight Term' },
-  { key: 'ReceiptPortCode', label: 'Receipt Port Code' },
-  { key: 'ReceiptPortName', label: 'Receipt Port Name' },
-  { key: 'LoadingPortCode', label: 'Loading Port Code' },
-  { key: 'LoadingPortName', label: 'Loading Port Name' },
-  { key: 'DischargePortCode', label: 'Discharge Port Code' },
-  { key: 'DischargePortName', label: 'Discharge Port Name' },
-  { key: 'DeliveryPortCode', label: 'Delivery Port Code' },
   { key: 'DeliveryPortName', label: 'Delivery Port Name' },
+  { key: 'ContainerNumber', label: 'Container Number' },
   { key: 'PackingQuantity', label: 'Packing Quantity' },
-  { key: 'PackingQuantityUnitCode', label: 'Packing Quantity Unit Code' },
   { key: 'GrossWeight', label: 'Gross Weight' },
   { key: 'VolumeMeasure', label: 'Volume Measure' },
   { key: 'IssueDate', label: 'Issue Date' },
   { key: 'ItemName', label: 'Item Name' },
-  { key: 'ContainerNumber', label: 'Container Number' },
-  { key: 'ContainerSealNo1', label: 'Container Seal No 1' },
-  { key: 'ContainerSealNo2', label: 'Container Seal No 2' },
-  { key: 'ContainerType', label: 'Container Type' },
-  { key: 'ContainerQTY', label: 'Container QTY' },
-  { key: 'ContainerUnitCode', label: 'Container Unit Code' },
-  { key: 'ContainerGWT', label: 'Container GWT' },
-  { key: 'ContainerCBM', label: 'Container CBM' },
 ] as const;
 
 export const CARGO_COMPARABLE_FIELDS = [
@@ -81,6 +54,19 @@ export const CARGO_COMPARABLE_FIELDS = [
   'Packaging',
 ] as const;
 
+export const CARGO_FIELD_LABELS: Record<(typeof CARGO_COMPARABLE_FIELDS)[number], string> = {
+  Brand: 'Brand',
+  CounterMark: 'Counter Mark',
+  CargoType: 'Cargo Type',
+  HazardClass: 'Hazard Class',
+  UNNumber: 'UN Number',
+  Packaging: 'Packaging',
+};
+
+export function isPresenceCampoKey(campoKey: string): boolean {
+  return /(?:^|[._])__presence__?$/i.test(campoKey) || campoKey.includes('__presence__');
+}
+
 export type ComparisonStatus =
   | 'completo_sem_divergencia'
   | 'completo_com_divergencia'
@@ -88,3 +74,54 @@ export type ComparisonStatus =
   | 'erro_comparacao';
 
 export type DivergenciaCampoCategoria = 'master' | 'house' | 'cargo' | 'ncm';
+
+const UI_CATEGORIAS: ReadonlySet<string> = new Set(['master', 'house', 'cargo', 'ncm']);
+
+const HOUSE_LEAF_KEYS = new Set(
+  BL_FINAL_HOUSE_GLOBALSYS_FIELDS.map((field) => field.blFinalKey),
+);
+
+const MASTER_LEAF_KEYS = new Set(
+  BL_FINAL_MASTER_GLOBALSYS_FIELDS.map((field) => field.blFinalKey),
+);
+
+/**
+ * Abas da tela de divergência só exibem master/house/cargo/ncm.
+ * O motor canônico ainda emite general/container/party/port — inferimos a aba pelo path.
+ */
+export function resolveDivergenciaCampoCategoria(campoKey: string): DivergenciaCampoCategoria {
+  if (campoKey.startsWith('house.') || campoKey.includes('.house.')) {
+    return 'house';
+  }
+
+  if (campoKey.startsWith('cargo.') || campoKey.includes('.cargo.')) {
+    return 'cargo';
+  }
+
+  if (campoKey.startsWith('ncm.') || campoKey.includes('.ncm.')) {
+    return 'ncm';
+  }
+
+  const leaf = campoKey.split('.').pop() ?? campoKey;
+
+  if (HOUSE_LEAF_KEYS.has(leaf)) {
+    return 'house';
+  }
+
+  if (MASTER_LEAF_KEYS.has(leaf)) {
+    return 'master';
+  }
+
+  return 'master';
+}
+
+export function mapPersistedDivergenciaCategoria(
+  campoKey: string,
+  rawCategoria: string | null | undefined,
+): DivergenciaCampoCategoria {
+  if (rawCategoria && UI_CATEGORIAS.has(rawCategoria)) {
+    return rawCategoria as DivergenciaCampoCategoria;
+  }
+
+  return resolveDivergenciaCampoCategoria(campoKey);
+}

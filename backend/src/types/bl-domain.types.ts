@@ -47,13 +47,17 @@ export interface UpdateWorkflowInput {
   pendencia?: string | null;
   responsavelUserId?: number | null;
   confianca?: number | null;
+  /** Não dispara XML/EDI após finalizar (Manter GlobalSys). */
+  skipXmlDispatch?: boolean;
+  /** Regenera XML mesmo se já houver envio para o Master. */
+  forceXmlDispatch?: boolean;
 }
 
 export interface WorkflowUpsertParams {
   tipoBl: BlDocumentType;
   blMasterId?: number | null;
   blHouseId?: number | null;
-  /** MasterNumber ou HouseNumber — permite localizar workflow de outra versão (DRAFT/FINAL). */
+  /** MasterNumber ou HouseNumber do documento desta versão. */
   documentNumber?: string;
   data: UpdateWorkflowInput;
 }
@@ -132,6 +136,8 @@ export interface PersistDivergenciaCampoInput {
   /** BL Final×GlobalSys — valor no GlobalSys. */
   valorGlobalSys?: string;
   categoria: 'master' | 'house' | 'cargo' | 'ncm';
+  /** Default: pendente. Campos que conferem são gravados como "igual". */
+  status?: string;
 }
 
 export interface BlFinalGlobalSysFieldComparison {

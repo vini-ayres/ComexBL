@@ -283,7 +283,7 @@ export class GlobalSysService {
    * Fluxo:
    * 1. Valida existência do FINAL local (prepareFinalOverwriteContext)
    * 2. Monta BL Final consolidado (BlFinalService — FINAL + Apoio Humano)
-   * 3. Consulta GlobalSys (TB_BL, TB_CARGA_BL, TB_BL_NCM)
+   * 3. Consulta GlobalSys (queries Master/House de divergência)
    * 4. Compara BL Final × GlobalSys e persiste divergências
    * 5. Atualiza workflow conforme comparisonStatus
    *

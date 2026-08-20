@@ -1,8 +1,9 @@
 -- Contrato n8n: webhook POST /enviar-xml-globalsys
--- Body: { "masterId": number }
--- O ComexBL dispara UMA vez por Master+versão quando o lote fecha (HBLCount).
--- Filename deve incluir BlVersion para não sobrescrever DRAFT e FINAL:
---   CTR NO. {container}, MBL NO. {masterNumber}, {BlVersion}
+-- Body: { "masterId": number, "houseId": number }
+-- HBLCount no Master é sempre 1. Partlot agrega um House extra ao Master
+-- do mesmo container e dispara um XML novo só para esse House.
+-- Filename deve incluir BlVersion e HouseNumber para não sobrescrever envios:
+--   CTR NO. {container}, MBL NO. {masterNumber}, HBL NO. {houseNumber}, {BlVersion}
 
 SELECT (
     SELECT
@@ -15,7 +16,7 @@ SELECT (
         m.Voyage,
         m.OnboardDate,
         m.ArrivalDate,
-        m.HBLCount,
+        1 AS HBLCount,
 
         m.ShipperName,
         m.ShipperAddress,
@@ -127,7 +128,8 @@ SELECT (
                 )) AS Ncms
 
             FROM BL_House h
-            WHERE h.BLMasterId = m.Id
+            WHERE h.Id = {{ $json.body.houseId }}
+              AND h.BLMasterId = m.Id
             FOR JSON PATH
         )) AS Houses
 

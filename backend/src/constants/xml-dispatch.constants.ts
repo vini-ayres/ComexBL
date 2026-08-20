@@ -7,6 +7,9 @@ export const XML_DISPATCH_STATUS = {
 export type XmlDispatchRecordStatus =
   (typeof XML_DISPATCH_STATUS)[keyof typeof XML_DISPATCH_STATUS];
 
+/** HBLCount no Master fica fixo em 1. Partlot agrega Houses extras no mesmo Master. */
+export const MASTER_HBL_COUNT = 1;
+
 export const LOT_STATUS = {
   COUNT_AUSENTE: 'count_ausente',
   MASTER_NAO_FINALIZADO: 'master_nao_finalizado',

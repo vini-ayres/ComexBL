@@ -43,8 +43,7 @@ async function main() {
   const ready =
     Boolean(master?.ContainerNumber?.trim()) &&
     masterWf?.Status === 'finalizado' &&
-    master?.HBLCount != null &&
-    houses.length === master.HBLCount;
+    houses.length > 0;
 
   console.log('\nPronto para webhook consolidado:', ready ? 'SIM' : 'NAO');
 
@@ -55,14 +54,14 @@ async function main() {
 
   console.log('\n=== Teste de conectividade (POST de verificação) ===');
   console.log('URL:', env.n8n.webhookEnviarXmlGlobalsysUrl);
-  console.log('Payload:', JSON.stringify({ masterId }));
+  console.log('Payload:', JSON.stringify({ masterId, houseId: houses[0]?.Id ?? null }));
 
   try {
     const started = Date.now();
     const response = await fetch(env.n8n.webhookEnviarXmlGlobalsysUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ masterId }),
+      body: JSON.stringify({ masterId, houseId: houses[0]?.Id }),
     });
     const body = await response.text().catch(() => '');
     console.log('HTTP status:', response.status, response.statusText);

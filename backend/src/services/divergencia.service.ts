@@ -7,13 +7,16 @@ import {
 } from '../constants/globalsys-comparison.constants.js';
 import {
   CARGO_COMPARABLE_FIELDS,
+  CARGO_FIELD_LABELS,
   HOUSE_SCALAR_FIELDS,
   MASTER_SCALAR_FIELDS,
+  isPresenceCampoKey,
+  resolveDivergenciaCampoCategoria,
   type ComparisonStatus,
-  type DivergenciaCampoCategoria,
 } from '../constants/bl-comparison.constants.js';
 import { BadRequestError, ConflictError, NotFoundError } from '../errors/AppError.js';
 import {
+  DIVERGENCIA_CAMPO_STATUS,
   DIVERGENCIA_HEADER_STATUS,
   STRATEGY_TO_CAMPO_STATUS,
   isCampoPending,
@@ -42,8 +45,12 @@ import {
   flattenBlFinalHouse,
   mapGlobalSysCargoRecord,
   mapGlobalSysNcmRecord,
-  readGlobalSysBlField,
 } from '../mappers/globalsys-comparison.mapper.js';
+import {
+  mapGlobalSysHouseRecord,
+  mapGlobalSysMasterRecord,
+} from '../mappers/globalsys-comparacao.mapper.js';
+import { PRISMA_EXTENDED_TRANSACTION_OPTIONS } from '../constants/prisma.constants.js';
 import { prisma } from '../prisma/client.js';
 import { BlDivergenciaCampoRepository } from '../repositories/bl-divergencia-campo.repository.js';
 import { BlDivergenciaRepository } from '../repositories/bl-divergencia.repository.js';
@@ -67,11 +74,12 @@ import type {
   PersistDivergenciaCampoInput,
 } from '../types/bl-domain.types.js';
 import type { BlFinalHouseDto } from '../types/bl-final.types.js';
-import type { GlobalSysBlRecord } from '../types/globalsys.types.js';
 import type { GlobalSysComparableCargo, GlobalSysComparableNcm } from '../types/globalsys-comparison.types.js';
 import {
+  buildCargoCampoKey,
   buildCargoLogicalKey,
   normalizeNcmCode,
+  normalizeComparedFieldValue,
   serializeComparisonValue,
   valuesDiverge,
 } from '../utils/comparison.utils.js';
@@ -80,6 +88,7 @@ import {
   inferComparisonKind,
   resolveComparisonOrigin,
 } from '../utils/comparison-kind.utils.js';
+import { formatGlobalSysPersistError } from '../utils/prisma-error.utils.js';
 import type { BlFinalService } from './bl-final.service.js';
 import type { WorkflowService } from './workflow.service.js';
 
@@ -134,7 +143,7 @@ export class DivergenciaService {
         result,
         tx,
       );
-    });
+    }, PRISMA_EXTENDED_TRANSACTION_OPTIONS);
 
     return result;
   }
@@ -184,7 +193,7 @@ export class DivergenciaService {
         result,
         tx,
       );
-    });
+    }, PRISMA_EXTENDED_TRANSACTION_OPTIONS);
 
     return result;
   }
@@ -368,7 +377,7 @@ export class DivergenciaService {
 
         comparisons.push({
           logicalKey,
-          campoKey: `${prefix}cargo.${logicalKey}.${field}`,
+          campoKey: buildCargoCampoKey(prefix, logicalKey, field),
           draftValue,
           finalValue,
           divergent: valuesDiverge(draftValue, finalValue),
@@ -378,7 +387,7 @@ export class DivergenciaService {
       if (!draft || !finalCargo) {
         comparisons.push({
           logicalKey,
-          campoKey: `${prefix}cargo.${logicalKey}.__presence__`,
+          campoKey: buildCargoCampoKey(prefix, logicalKey, '__presence__'),
           draftValue: draft ? 'presente' : null,
           finalValue: finalCargo ? 'presente' : null,
           divergent: true,
@@ -686,7 +695,7 @@ export class DivergenciaService {
       );
 
       return { divergencia, workflow };
-    });
+    }, PRISMA_EXTENDED_TRANSACTION_OPTIONS);
 
     return {
       ...comparison,
@@ -718,14 +727,14 @@ export class DivergenciaService {
         campoLabel: field.campoLabel,
         valorDraft: field.draftValue ?? '',
         valorFinal: field.finalValue ?? '',
-        categoria: this.resolveFieldCategoria(field.campoKey),
+        categoria: resolveDivergenciaCampoCategoria(field.campoKey),
       });
     }
 
     for (const cargo of comparison.cargoComparisons.filter((item) => item.divergent)) {
       campos.push({
         campoKey: cargo.campoKey,
-        campoLabel: cargo.campoKey,
+        campoLabel: cargo.campoKey.split('.').pop() ?? cargo.campoKey,
         valorDraft: cargo.draftValue ?? '',
         valorFinal: cargo.finalValue ?? '',
         categoria: 'cargo',
@@ -743,22 +752,6 @@ export class DivergenciaService {
     }
 
     return campos;
-  }
-
-  private resolveFieldCategoria(campoKey: string): DivergenciaCampoCategoria {
-    if (campoKey.startsWith('house.') || campoKey.includes('.house.')) {
-      return 'house';
-    }
-
-    if (campoKey.startsWith('cargo.') || campoKey.includes('.cargo.')) {
-      return 'cargo';
-    }
-
-    if (campoKey.startsWith('ncm.') || campoKey.includes('.ncm.')) {
-      return 'ncm';
-    }
-
-    return 'master';
   }
 
   async compareBlFinalWithGlobalSys(
@@ -799,10 +792,7 @@ export class DivergenciaService {
 
       return await this.persistBlFinalGlobalSysComparison(comparison);
     } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : 'Erro desconhecido na comparação BL Final × GlobalSys';
+      const message = formatGlobalSysPersistError(error);
 
       const failureComparison: BlFinalGlobalSysComparisonResult = {
         documentType,
@@ -836,7 +826,7 @@ export class DivergenciaService {
 
   compareBlFinalGlobalSysFields(
     blFinal: Record<string, string | null | undefined>,
-    globalSysRecord: GlobalSysBlRecord | null,
+    globalSysRecord: Record<string, string | null | undefined> | null,
     fields: readonly {
       blFinalKey: string;
       globalSysColumn: string;
@@ -844,14 +834,20 @@ export class DivergenciaService {
     }[],
     keyPrefix = '',
   ): BlFinalGlobalSysFieldComparison[] {
-    return fields.map(({ blFinalKey, globalSysColumn, label }) => {
-      const blFinalValue = serializeComparisonValue(blFinal[blFinalKey]);
-      const globalSysValue = readGlobalSysBlField(globalSysRecord, globalSysColumn);
+    return fields.map(({ blFinalKey, label }) => {
       const campoKey = keyPrefix ? `${keyPrefix}.${blFinalKey}` : blFinalKey;
+      const blFinalValue = normalizeComparedFieldValue(
+        campoKey,
+        blFinal[blFinalKey],
+      );
+      const globalSysValue = normalizeComparedFieldValue(
+        campoKey,
+        globalSysRecord?.[blFinalKey],
+      );
 
       return {
         campoKey,
-        campoLabel: keyPrefix ? `${keyPrefix} — ${label}` : label,
+        campoLabel: label,
         blFinalValue,
         globalSysValue,
         divergent: valuesDiverge(blFinalValue, globalSysValue),
@@ -893,7 +889,7 @@ export class DivergenciaService {
 
         comparisons.push({
           logicalKey,
-          campoKey: `${prefix}cargo.${logicalKey}.${field}`,
+          campoKey: buildCargoCampoKey(prefix, logicalKey, field),
           blFinalValue,
           globalSysValue,
           divergent: valuesDiverge(blFinalValue, globalSysValue),
@@ -903,7 +899,7 @@ export class DivergenciaService {
       if (!blFinal || !globalSys) {
         comparisons.push({
           logicalKey,
-          campoKey: `${prefix}cargo.${logicalKey}.__presence__`,
+          campoKey: buildCargoCampoKey(prefix, logicalKey, '__presence__'),
           blFinalValue: blFinal ? 'presente' : null,
           globalSysValue: globalSys ? 'presente' : null,
           divergent: true,
@@ -962,8 +958,9 @@ export class DivergenciaService {
       );
     }
 
-    const masterBundle = await this.globalSysBlRepository.findBundleByNumeroBl(
+    const masterBundle = await this.globalSysBlRepository.findMasterBundle(
       masterNumber,
+      blFinal.master.containerNumber,
     );
 
     if (!masterBundle.blFound) {
@@ -977,7 +974,12 @@ export class DivergenciaService {
 
     const fieldComparisons = this.compareBlFinalGlobalSysFields(
       blFinal.master as unknown as Record<string, string | null>,
-      masterBundle.blRecord,
+      masterBundle.blRecord
+        ? (mapGlobalSysMasterRecord(masterBundle.blRecord, masterNumber) as unknown as Record<
+            string,
+            string | null
+          >)
+        : null,
       BL_FINAL_MASTER_GLOBALSYS_FIELDS,
     );
 
@@ -1012,7 +1014,7 @@ export class DivergenciaService {
       );
     }
 
-    const bundle = await this.globalSysBlRepository.findBundleByNumeroBl(
+    const bundle = await this.globalSysBlRepository.findHouseBundle(
       houseNumber,
     );
 
@@ -1027,7 +1029,12 @@ export class DivergenciaService {
 
     const fieldComparisons = this.compareBlFinalGlobalSysFields(
       flattenBlFinalHouse(house),
-      bundle.blRecord,
+      bundle.blRecord
+        ? (mapGlobalSysHouseRecord(bundle.blRecord, houseNumber) as unknown as Record<
+            string,
+            string | null
+          >)
+        : null,
       BL_FINAL_HOUSE_GLOBALSYS_FIELDS,
     );
 
@@ -1065,7 +1072,7 @@ export class DivergenciaService {
 
     for (const house of houses) {
       const prefix = `house.${house.houseNumber}`;
-      const bundle = await this.globalSysBlRepository.findBundleByNumeroBl(
+      const bundle = await this.globalSysBlRepository.findHouseBundle(
         house.houseNumber,
       );
 
@@ -1083,7 +1090,12 @@ export class DivergenciaService {
       fieldComparisons.push(
         ...this.compareBlFinalGlobalSysFields(
           flattenBlFinalHouse(house),
-          bundle.blRecord,
+          bundle.blRecord
+            ? (mapGlobalSysHouseRecord(bundle.blRecord, house.houseNumber) as unknown as Record<
+                string,
+                string | null
+              >)
+            : null,
           BL_FINAL_HOUSE_GLOBALSYS_FIELDS,
           prefix,
         ),
@@ -1219,7 +1231,7 @@ export class DivergenciaService {
       );
 
       return { divergencia, workflow };
-    });
+    }, PRISMA_EXTENDED_TRANSACTION_OPTIONS);
 
     return {
       ...comparison,
@@ -1234,37 +1246,78 @@ export class DivergenciaService {
   ): PersistDivergenciaCampoInput[] {
     const campos: PersistDivergenciaCampoInput[] = [];
 
-    for (const field of comparison.fieldComparisons.filter((item) => item.divergent)) {
+    for (const field of comparison.fieldComparisons) {
+      if (!this.shouldPersistComparedField(field.divergent, field.blFinalValue, field.globalSysValue)) {
+        continue;
+      }
+
       campos.push({
         campoKey: field.campoKey,
         campoLabel: field.campoLabel,
         valorBlFinal: field.blFinalValue ?? '',
         valorGlobalSys: field.globalSysValue ?? '',
-        categoria: this.resolveFieldCategoria(field.campoKey),
+        categoria: resolveDivergenciaCampoCategoria(field.campoKey),
+        status: field.divergent
+          ? DIVERGENCIA_CAMPO_STATUS.PENDENTE
+          : DIVERGENCIA_CAMPO_STATUS.IGUAL,
       });
     }
 
-    for (const cargo of comparison.cargoComparisons.filter((item) => item.divergent)) {
+    for (const cargo of comparison.cargoComparisons) {
+      if (isPresenceCampoKey(cargo.campoKey)) {
+        continue;
+      }
+
+      if (!this.shouldPersistComparedField(cargo.divergent, cargo.blFinalValue, cargo.globalSysValue)) {
+        continue;
+      }
+
+      const leaf = cargo.campoKey.split('.').pop() ?? cargo.campoKey;
+      const cargoLabel =
+        CARGO_FIELD_LABELS[leaf as keyof typeof CARGO_FIELD_LABELS] ?? leaf;
+
       campos.push({
         campoKey: cargo.campoKey,
-        campoLabel: cargo.campoKey,
+        campoLabel: cargoLabel,
         valorBlFinal: cargo.blFinalValue ?? '',
         valorGlobalSys: cargo.globalSysValue ?? '',
         categoria: 'cargo',
+        status: cargo.divergent
+          ? DIVERGENCIA_CAMPO_STATUS.PENDENTE
+          : DIVERGENCIA_CAMPO_STATUS.IGUAL,
       });
     }
 
-    for (const ncm of comparison.ncmComparisons.filter((item) => item.divergent)) {
+    for (const ncm of comparison.ncmComparisons) {
+      if (!ncm.divergent && ncm.presence !== 'both') {
+        continue;
+      }
+
       campos.push({
         campoKey: ncm.campoKey,
         campoLabel: `NCM ${ncm.ncmCode}`,
         valorBlFinal: ncm.presence === 'globalsys_only' ? '' : ncm.ncmCode,
         valorGlobalSys: ncm.presence === 'blfinal_only' ? '' : ncm.ncmCode,
         categoria: 'ncm',
+        status: ncm.divergent
+          ? DIVERGENCIA_CAMPO_STATUS.PENDENTE
+          : DIVERGENCIA_CAMPO_STATUS.IGUAL,
       });
     }
 
     return campos;
+  }
+
+  private shouldPersistComparedField(
+    divergent: boolean,
+    blFinalValue: string | null | undefined,
+    globalSysValue: string | null | undefined,
+  ): boolean {
+    if (divergent) {
+      return true;
+    }
+
+    return Boolean(blFinalValue?.trim() || globalSysValue?.trim());
   }
 
   async getLatestPersistedByDocument(
@@ -1410,7 +1463,7 @@ export class DivergenciaService {
     const resolvedAt = this.parseResolvedAt(input.resolvedAt);
     const responsavel = this.resolveResponsavel(input);
 
-    return prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async (tx) => {
       for (const campo of pendingCampos) {
         const manualValue = input.manualValues?.[campo.CampoKey];
 
@@ -1427,13 +1480,20 @@ export class DivergenciaService {
         });
       }
 
-      return this.finalizeDivergenciaResolution({
+      await this.persistDivergenciaResolutionWrites({
         divergenciaId: id,
         context,
         responsavel,
         resolvedAt,
+        strategy: input.resolutionStrategy,
+        bulkKeepGlobalSys: input.resolutionStrategy === 'aceitar_globalsys',
         tx,
       });
+    }, PRISMA_EXTENDED_TRANSACTION_OPTIONS);
+
+    return this.buildDivergenciaResolveResponse({
+      divergenciaId: id,
+      context,
     });
   }
 
@@ -1472,7 +1532,7 @@ export class DivergenciaService {
     const resolvedAt = this.parseResolvedAt(input.resolvedAt);
     const responsavel = this.resolveResponsavel(input);
 
-    return prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async (tx) => {
       await this.applyCampoResolution({
         divergencia,
         context,
@@ -1485,17 +1545,24 @@ export class DivergenciaService {
         tx,
       });
 
-      return this.finalizeDivergenciaResolution({
+      await this.persistDivergenciaResolutionWrites({
         divergenciaId,
         context,
         responsavel,
         resolvedAt,
+        strategy: input.resolutionStrategy,
+        bulkKeepGlobalSys: false,
         tx,
       });
+    }, PRISMA_EXTENDED_TRANSACTION_OPTIONS);
+
+    return this.buildDivergenciaResolveResponse({
+      divergenciaId,
+      context,
     });
   }
 
-  private async finalizeDivergenciaResolution(params: {
+  private async persistDivergenciaResolutionWrites(params: {
     divergenciaId: number;
     context: {
       documentType: BlDocumentType;
@@ -1505,20 +1572,29 @@ export class DivergenciaService {
     };
     responsavel: { userId: number | null; nome: string };
     resolvedAt: Date;
+    strategy: DivergenciaResolutionStrategy;
+    bulkKeepGlobalSys: boolean;
     tx: Prisma.TransactionClient;
-  }) {
+  }): Promise<void> {
     const refreshed = await this.divergenciaRepository.findByIdWithCampos(
       params.divergenciaId,
+      params.tx,
     );
 
     if (!refreshed) {
       throw new NotFoundError(`Divergência ${params.divergenciaId} não encontrada`);
     }
+
     const pendingCount = refreshed.campos.filter((campo) =>
       isCampoPending(campo.Status),
     ).length;
     const resolvedCount = refreshed.campos.length - pendingCount;
     const allResolved = refreshed.campos.length === 0 || pendingCount === 0;
+    const xmlFlags = this.resolveXmlDispatchFlags({
+      strategy: params.strategy,
+      campos: refreshed.campos,
+      bulkKeepGlobalSys: params.bulkKeepGlobalSys,
+    });
 
     if (allResolved) {
       await this.divergenciaRepository.updateStatus(
@@ -1545,20 +1621,35 @@ export class DivergenciaService {
       );
     }
 
-    const workflow = await this.workflowService.applyDivergenciaResolutionResult(
+    await this.workflowService.applyDivergenciaResolutionResult(
       params.context.documentType,
       params.context.documentNumber,
       {
         allResolved,
         pendingCount,
         resolvedCount,
+        skipXmlDispatch: xmlFlags.skipXmlDispatch,
+        forceXmlDispatch: xmlFlags.forceXmlDispatch,
       },
       params.tx,
     );
+  }
 
+  private async buildDivergenciaResolveResponse(params: {
+    divergenciaId: number;
+    context: {
+      documentType: BlDocumentType;
+      documentNumber: string;
+      blMasterId: number | null;
+      blHouseId: number | null;
+    };
+  }) {
     const divergenciaAfterUpdate =
-      (await this.divergenciaRepository.findByIdWithCampos(params.divergenciaId)) ??
-      refreshed;
+      await this.divergenciaRepository.findByIdWithCampos(params.divergenciaId);
+
+    if (!divergenciaAfterUpdate) {
+      throw new NotFoundError(`Divergência ${params.divergenciaId} não encontrada`);
+    }
 
     const enriched = await this.enrichPersistedDivergencia({
       divergencia: divergenciaAfterUpdate,
@@ -1572,6 +1663,15 @@ export class DivergenciaService {
       divergenciaAfterUpdate.campos.map((campo) => campo.CampoKey),
     );
 
+    const workflowSummary = enriched.workflow
+      ? mapWorkflowSummary({
+          workflow: enriched.workflow.workflow,
+          documentType: enriched.documentType,
+          documentNumber: enriched.documentNumber,
+          blVersion: BL_VERSION.FINAL,
+        })
+      : null;
+
     const divergenciaDetail = mapDivergenciaLatestDetail({
       divergencia: enriched.divergencia,
       documentType: enriched.documentType,
@@ -1580,14 +1680,7 @@ export class DivergenciaService {
       comparisonStatus: enriched.comparisonStatus,
       comparisonDate: enriched.comparisonDate,
       origin: enriched.origin,
-      workflow: enriched.workflow
-        ? mapWorkflowSummary({
-            workflow: enriched.workflow.workflow,
-            documentType: enriched.documentType,
-            documentNumber: enriched.documentNumber,
-            blVersion: BL_VERSION.FINAL,
-          })
-        : null,
+      workflow: workflowSummary,
     });
 
     return mapDivergenciaResolveResponse({
@@ -1595,14 +1688,34 @@ export class DivergenciaService {
       documentType: params.context.documentType,
       documentNumber: params.context.documentNumber,
       divergenciaDetail,
-      workflow: mapWorkflowSummary({
-        workflow,
-        documentType: params.context.documentType,
-        documentNumber: params.context.documentNumber,
-        blVersion: BL_VERSION.FINAL,
-      }),
+      workflow: workflowSummary,
       historicoByCampoKey,
     });
+  }
+
+  private resolveXmlDispatchFlags(params: {
+    strategy: DivergenciaResolutionStrategy;
+    campos: { Status: string }[];
+    bulkKeepGlobalSys: boolean;
+  }): { skipXmlDispatch: boolean; forceXmlDispatch: boolean } {
+    if (params.bulkKeepGlobalSys) {
+      return { skipXmlDispatch: true, forceXmlDispatch: false };
+    }
+
+    const acceptedBlFinal =
+      params.strategy === 'aceitar_bl_final' ||
+      params.strategy === 'manual' ||
+      params.campos.some(
+        (campo) =>
+          campo.Status === 'resolvido_bl_final' ||
+          campo.Status === 'resolvido_manual',
+      );
+
+    if (!acceptedBlFinal) {
+      return { skipXmlDispatch: true, forceXmlDispatch: false };
+    }
+
+    return { skipXmlDispatch: false, forceXmlDispatch: true };
   }
 
   private async applyCampoResolution(params: {
@@ -1640,8 +1753,6 @@ export class DivergenciaService {
       params.campo.Id,
       {
         status: campoStatus,
-        valorBlFinal: acceptedValue,
-        valorGlobalSys: acceptedValue,
       },
       params.tx,
     );

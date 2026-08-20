@@ -256,27 +256,25 @@ export const blHouseList: BLHouse[] = [
 // Administração - Usuários / AD / RBAC
 // ------------------------------------------------------------
 export const usuarios: Usuario[] = [
-  { id: "u1", nome: "Ana Ribeiro", email: "ana.ribeiro@empresa.com.br", login: "ana.ribeiro", grupoAD: "GG_COMEX_SUPERVISORES", perfil: "Supervisor", status: "ativo", ultimoAcesso: "2026-07-08T11:40:00", sincronizadoEm: "2026-07-08T06:00:00", avatarColor: "#1B3153" },
-  { id: "u2", nome: "Carlos Mendes", email: "carlos.mendes@empresa.com.br", login: "carlos.mendes", grupoAD: "GG_COMEX_OPERADORES", perfil: "Operador", status: "ativo", ultimoAcesso: "2026-07-08T10:15:00", sincronizadoEm: "2026-07-08T06:00:00", avatarColor: "#EA8022" },
-  { id: "u3", nome: "Fernanda Lima", email: "fernanda.lima@empresa.com.br", login: "fernanda.lima", grupoAD: "GG_COMEX_OPERADORES", perfil: "Operador", status: "ativo", ultimoAcesso: "2026-07-08T09:14:00", sincronizadoEm: "2026-07-08T06:00:00", avatarColor: "#2563EB" },
-  { id: "u4", nome: "João Pedro Alves", email: "joao.alves@empresa.com.br", login: "joao.alves", grupoAD: "GG_COMEX_AUDITORIA", perfil: "Auditor", status: "ativo", ultimoAcesso: "2026-07-07T17:22:00", sincronizadoEm: "2026-07-08T06:00:00", avatarColor: "#16A34A" },
-  { id: "u5", nome: "Marcela Santos", email: "marcela.santos@empresa.com.br", login: "marcela.santos", grupoAD: "GG_COMEX_ADMIN", perfil: "Administrador", status: "ativo", ultimoAcesso: "2026-07-08T08:05:00", sincronizadoEm: "2026-07-08T06:00:00", avatarColor: "#DC2626" },
-  { id: "u6", nome: "Roberto Freitas", email: "roberto.freitas@empresa.com.br", login: "roberto.freitas", grupoAD: "GG_COMEX_OPERADORES", perfil: "Operador", status: "bloqueado", ultimoAcesso: "2026-06-28T14:00:00", sincronizadoEm: "2026-07-08T06:00:00", avatarColor: "#7991B2" },
-  { id: "u7", nome: "Patrícia Souza", email: "patricia.souza@empresa.com.br", login: "patricia.souza", grupoAD: "GG_COMEX_SUPERVISORES", perfil: "Supervisor", status: "inativo", ultimoAcesso: "2026-05-30T09:00:00", sincronizadoEm: "2026-07-08T06:00:00", avatarColor: "#CA8A04" },
+  { id: "u1", nome: "Ana Ribeiro", email: "ana.ribeiro@empresa.com.br", login: "ana.ribeiro", grupoAD: "GG_OCR_BL_SUPERVISOR", perfil: "Supervisor", status: "ativo", ultimoAcesso: "2026-07-08T11:40:00", sincronizadoEm: "2026-07-08T06:00:00", avatarColor: "#1B3153" },
+  { id: "u2", nome: "Carlos Mendes", email: "carlos.mendes@empresa.com.br", login: "carlos.mendes", grupoAD: "GG_OCR_BL_OPERADOR", perfil: "Operador", status: "ativo", ultimoAcesso: "2026-07-08T10:15:00", sincronizadoEm: "2026-07-08T06:00:00", avatarColor: "#EA8022" },
+  { id: "u3", nome: "Fernanda Lima", email: "fernanda.lima@empresa.com.br", login: "fernanda.lima", grupoAD: "GG_OCR_BL_OPERADOR", perfil: "Operador", status: "ativo", ultimoAcesso: "2026-07-08T09:14:00", sincronizadoEm: "2026-07-08T06:00:00", avatarColor: "#2563EB" },
+  { id: "u4", nome: "João Pedro Alves", email: "joao.alves@empresa.com.br", login: "joao.alves", grupoAD: "GG_OCR_BL_OPERADOR", perfil: "Operador", status: "ativo", ultimoAcesso: "2026-07-07T17:22:00", sincronizadoEm: "2026-07-08T06:00:00", avatarColor: "#16A34A" },
+  { id: "u5", nome: "Marcela Santos", email: "marcela.santos@empresa.com.br", login: "marcela.santos", grupoAD: "GG_OCR_BL_ADMIN", perfil: "Administrador", status: "ativo", ultimoAcesso: "2026-07-08T08:05:00", sincronizadoEm: "2026-07-08T06:00:00", avatarColor: "#DC2626" },
+  { id: "u6", nome: "Roberto Freitas", email: "roberto.freitas@empresa.com.br", login: "roberto.freitas", grupoAD: "GG_OCR_BL_OPERADOR", perfil: "Operador", status: "bloqueado", ultimoAcesso: "2026-06-28T14:00:00", sincronizadoEm: "2026-07-08T06:00:00", avatarColor: "#7991B2" },
+  { id: "u7", nome: "Patrícia Souza", email: "patricia.souza@empresa.com.br", login: "patricia.souza", grupoAD: "GG_OCR_BL_SUPERVISOR", perfil: "Supervisor", status: "inativo", ultimoAcesso: "2026-05-30T09:00:00", sincronizadoEm: "2026-07-08T06:00:00", avatarColor: "#CA8A04" },
 ]
 
 export const gruposAD: GrupoAD[] = [
-  { id: "g1", nomeGrupo: "GG_COMEX_ADMIN", dn: "CN=GG_COMEX_ADMIN,OU=Grupos,OU=Comex,DC=empresa,DC=com,DC=br", perfilMapeado: "Administrador", usuarios: 2, sincronizadoEm: "2026-07-08T06:00:00" },
-  { id: "g2", nomeGrupo: "GG_COMEX_SUPERVISORES", dn: "CN=GG_COMEX_SUPERVISORES,OU=Grupos,OU=Comex,DC=empresa,DC=com,DC=br", perfilMapeado: "Supervisor", usuarios: 4, sincronizadoEm: "2026-07-08T06:00:00" },
-  { id: "g3", nomeGrupo: "GG_COMEX_OPERADORES", dn: "CN=GG_COMEX_OPERADORES,OU=Grupos,OU=Comex,DC=empresa,DC=com,DC=br", perfilMapeado: "Operador", usuarios: 12, sincronizadoEm: "2026-07-08T06:00:00" },
-  { id: "g4", nomeGrupo: "GG_COMEX_AUDITORIA", dn: "CN=GG_COMEX_AUDITORIA,OU=Grupos,OU=Comex,DC=empresa,DC=com,DC=br", perfilMapeado: "Auditor", usuarios: 3, sincronizadoEm: "2026-07-08T06:00:00" },
+  { id: "g1", nomeGrupo: "GG_OCR_BL_ADMIN", dn: "CN=GG_OCR_BL_ADMIN,OU=Grupos,OU=OCR,DC=empresa,DC=com,DC=br", perfilMapeado: "Administrador", usuarios: 2, sincronizadoEm: "2026-07-08T06:00:00" },
+  { id: "g2", nomeGrupo: "GG_OCR_BL_SUPERVISOR", dn: "CN=GG_OCR_BL_SUPERVISOR,OU=Grupos,OU=OCR,DC=empresa,DC=com,DC=br", perfilMapeado: "Supervisor", usuarios: 4, sincronizadoEm: "2026-07-08T06:00:00" },
+  { id: "g3", nomeGrupo: "GG_OCR_BL_OPERADOR", dn: "CN=GG_OCR_BL_OPERADOR,OU=Grupos,OU=OCR,DC=empresa,DC=com,DC=br", perfilMapeado: "Operador", usuarios: 12, sincronizadoEm: "2026-07-08T06:00:00" },
 ]
 
 export const permissoesPorPerfil: Record<PerfilUsuario, string[]> = {
   Administrador: ["visualizar_bl", "editar_bl", "aprovar_divergencias", "administrar_usuarios", "configurar_integracoes", "auditoria"],
   Supervisor: ["visualizar_bl", "editar_bl", "aprovar_divergencias", "auditoria"],
   Operador: ["visualizar_bl", "editar_bl"],
-  Auditor: ["visualizar_bl", "auditoria"],
 }
 
 export const permissoesDisponiveis: Permissao[] = [
@@ -307,7 +305,7 @@ export const ldapConfig: LdapConfig = {
   servidor: "ldap://ad01.empresa.com.br",
   porta: 389,
   baseDN: "DC=empresa,DC=com,DC=br",
-  grupoAD: "GG_COMEX_*",
+  grupoAD: "GG_OCR_BL_*",
   bindUser: "svc_comex_ldap",
   usarSSL: true,
   status: "conectado",

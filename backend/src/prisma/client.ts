@@ -7,11 +7,11 @@ const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
 };
 
-function createPrismaClient(): PrismaClient {
+function createPrismaClient(url = env.database.url): PrismaClient {
   return new PrismaClient({
     datasources: {
       db: {
-        url: env.database.url,
+        url,
       },
     },
     log:
@@ -21,7 +21,7 @@ function createPrismaClient(): PrismaClient {
   });
 }
 
-export const prisma = globalForPrisma.prisma ?? createPrismaClient();
+export let prisma = globalForPrisma.prisma ?? createPrismaClient();
 
 if (process.env.NODE_ENV !== 'production') {
   globalForPrisma.prisma = prisma;
@@ -33,6 +33,23 @@ export async function connectPrisma(): Promise<void> {
   );
   await prisma.$connect();
   logger.info('Prisma Client conectado ao SQL Server');
+}
+
+export async function reconnectPrisma(url: string): Promise<void> {
+  if (url === process.env.DATABASE_URL) {
+    return;
+  }
+
+  const next = createPrismaClient(url);
+  await next.$connect();
+
+  const previous = prisma;
+  prisma = next;
+  globalForPrisma.prisma = next;
+  process.env.DATABASE_URL = url;
+
+  await previous.$disconnect().catch(() => undefined);
+  logger.info('Prisma Client reconectado com a configuração salva na tela');
 }
 
 export async function disconnectPrisma(): Promise<void> {

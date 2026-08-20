@@ -1,5 +1,11 @@
 import { getGlobalSysPool } from '../globalsys/client.js';
 import {
+  SQL_FIND_HOUSE_DIVERGENCIA,
+  SQL_FIND_MASTER_DIVERGENCIA,
+} from '../globalsys/globalsys-select.queries.js';
+import {
+  extractCargoRecordsFromHouseRows,
+  extractNcmRecordsFromHouseRows,
   mapGlobalSysCargoRecord,
   mapGlobalSysHouseRecord,
   mapGlobalSysMasterRecord,
@@ -14,18 +20,6 @@ import type {
   GlobalSysNcmDto,
 } from '../types/globalsys-comparacao.types.js';
 
-const SQL_FIND_TB_BL = 'SELECT * FROM TB_BL WHERE NR_BL = @numeroBL';
-
-const SQL_FIND_CARGA = `SELECT c.*
-  FROM TB_CARGA_BL c
-  INNER JOIN TB_BL b ON b.ID_BL = c.ID_BL
-  WHERE b.NR_BL = @numeroBL`;
-
-const SQL_FIND_NCM = `SELECT n.*
-  FROM TB_BL_NCM n
-  INNER JOIN TB_BL b ON b.ID_BL = n.ID_BL
-  WHERE b.NR_BL = @numeroBL`;
-
 export class GlobalSysComparacaoRepository {
   async loadMasterAggregate(numeroBL: string): Promise<GlobalSysMasterAggregateDto> {
     const master = await this.findMaster(numeroBL);
@@ -34,17 +28,23 @@ export class GlobalSysComparacaoRepository {
   }
 
   async loadHouseAggregate(numeroBL: string): Promise<GlobalSysHouseAggregateDto> {
-    const [house, cargo, ncm] = await Promise.all([
-      this.findHouse(numeroBL),
-      this.findCargo(numeroBL),
-      this.findNcm(numeroBL),
-    ]);
+    const rows = await this.queryHouseRows(numeroBL);
+    const house = this.mapHouseFromRows(rows, numeroBL);
+    const cargo = this.mapCargoFromRows(rows);
+    const ncm = this.mapNcmFromRows(rows);
 
     return { house, cargo, ncm };
   }
 
   private async findMaster(numeroBL: string): Promise<GlobalSysMasterDto | null> {
-    const record = await this.findTbBlRecord(numeroBL);
+    const pool = await getGlobalSysPool();
+    const request = pool.request();
+    request.input('MasterNumber', numeroBL);
+
+    const result = await request.query<Record<string, unknown>>(
+      SQL_FIND_MASTER_DIVERGENCIA,
+    );
+    const record = result.recordset[0] ?? null;
 
     if (!record) {
       return null;
@@ -53,8 +53,11 @@ export class GlobalSysComparacaoRepository {
     return mapGlobalSysMasterRecord(record, numeroBL);
   }
 
-  private async findHouse(numeroBL: string): Promise<GlobalSysHouseDto | null> {
-    const record = await this.findTbBlRecord(numeroBL);
+  private mapHouseFromRows(
+    rows: Record<string, unknown>[],
+    numeroBL: string,
+  ): GlobalSysHouseDto | null {
+    const record = rows[0] ?? null;
 
     if (!record) {
       return null;
@@ -63,38 +66,28 @@ export class GlobalSysComparacaoRepository {
     return mapGlobalSysHouseRecord(record, numeroBL);
   }
 
-  private async findCargo(numeroBL: string): Promise<GlobalSysCargoDto[]> {
-    const pool = await getGlobalSysPool();
-    const request = pool.request();
-    request.input('numeroBL', numeroBL);
-
-    const result = await request.query<Record<string, unknown>>(SQL_FIND_CARGA);
-
-    return (result.recordset ?? []).map(mapGlobalSysCargoRecord);
+  private mapCargoFromRows(rows: Record<string, unknown>[]): GlobalSysCargoDto[] {
+    return extractCargoRecordsFromHouseRows(rows).map(mapGlobalSysCargoRecord);
   }
 
-  private async findNcm(numeroBL: string): Promise<GlobalSysNcmDto[]> {
-    const pool = await getGlobalSysPool();
-    const request = pool.request();
-    request.input('numeroBL', numeroBL);
-
-    const result = await request.query<Record<string, unknown>>(SQL_FIND_NCM);
-
-    return (result.recordset ?? [])
+  private mapNcmFromRows(rows: Record<string, unknown>[]): GlobalSysNcmDto[] {
+    return extractNcmRecordsFromHouseRows(rows)
       .map(mapGlobalSysNcmRecord)
       .filter((item): item is GlobalSysNcmDto => item != null);
   }
 
-  private async findTbBlRecord(
-    numeroBL: string,
-  ): Promise<Record<string, unknown> | null> {
+  private async queryHouseRows(
+    houseNumber: string,
+  ): Promise<Record<string, unknown>[]> {
     const pool = await getGlobalSysPool();
     const request = pool.request();
-    request.input('numeroBL', numeroBL);
+    request.input('HouseNumber', houseNumber);
 
-    const result = await request.query<Record<string, unknown>>(SQL_FIND_TB_BL);
+    const result = await request.query<Record<string, unknown>>(
+      SQL_FIND_HOUSE_DIVERGENCIA,
+    );
 
-    return result.recordset[0] ?? null;
+    return result.recordset ?? [];
   }
 }
 

@@ -207,11 +207,25 @@ export function mapRevisaoEvent(revisao: BlCampoRevisao): ProcessoTimelineEventD
     id: `revisao-${revisao.Id}`,
     eventType: 'apoio_humano',
     titulo: `Revisão: ${revisao.CampoLabel}`,
-    descricao: `Status ${revisao.Status}`,
+    descricao: resolveRevisaoValor(revisao),
     status: revisao.Status === 'pendente' ? 'em_andamento' : 'concluido',
     occurredAt: revisao.UpdatedAt.toISOString(),
     source: 'dinamico',
   };
+}
+
+function resolveRevisaoValor(revisao: BlCampoRevisao): string | null {
+  const manual = revisao.ValorManual?.trim();
+  if (manual && manual !== '-') {
+    return manual;
+  }
+
+  const recebido = revisao.ValorRecebido?.trim();
+  if (recebido && recebido !== '-') {
+    return recebido;
+  }
+
+  return null;
 }
 
 function buildDynamicEtapa(

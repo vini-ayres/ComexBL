@@ -1,3 +1,4 @@
+import type { BlHouse, BlMaster, BlWorkflow } from '@prisma/client';
 import { BL_VERSION, type BlVersion } from '../constants/bl-version.constants.js';
 import { NotFoundError } from '../errors/AppError.js';
 import {
@@ -20,6 +21,24 @@ import { blProcessoEtapaRepository } from '../repositories/bl-processo-etapa.rep
 import { blHouseRepository, blMasterRepository, blWorkflowRepository } from '../repositories/bl.repository.js';
 import type { BlDocumentType } from '../types/bl-domain.types.js';
 import type { ProcessoTimelineEventDto, ProcessoTimelineResponseDto } from '../types/processo.types.js';
+
+type BlVersionRecord = BlMaster | BlHouse;
+
+function earliestDate(dates: Array<Date | null | undefined>): Date | null {
+  let earliest: Date | null = null;
+
+  for (const value of dates) {
+    if (!(value instanceof Date) || Number.isNaN(value.getTime())) {
+      continue;
+    }
+
+    if (!earliest || value < earliest) {
+      earliest = value;
+    }
+  }
+
+  return earliest;
+}
 
 export class ProcessoService {
   async getTimelineByDocument(
@@ -69,13 +88,24 @@ export class ProcessoService {
       this.findVersionRecord(documentType, documentNumber, BL_VERSION.FINAL),
     ]);
 
+    const ocrOccurredAt = await this.resolveOcrIngestedAt({
+      documentType,
+      currentRecordId: documentContext.recordId,
+      currentWorkflow: workflow,
+      draftRecord,
+      finalRecord,
+      consultas: consultas.map((item) => item.ExecutadoEm),
+      historico: historico.map((item) => item.CreatedAt),
+      revisoes: revisoes.map((item) => item.CreatedAt),
+    });
+
     const dynamicEvents: ProcessoTimelineEventDto[] = [];
 
     dynamicEvents.push(
       buildOcrIngestaoEvent({
         documentType,
         documentNumber,
-        occurredAt: documentContext.createdAt,
+        occurredAt: ocrOccurredAt,
         hasDraft: draftRecord != null,
         hasFinal: finalRecord != null,
       }),
@@ -85,12 +115,22 @@ export class ProcessoService {
       dynamicEvents.push(
         buildFinalRecebidoEvent({
           documentNumber,
-          occurredAt: this.resolveDocumentDate(finalRecord, documentContext.createdAt),
+          occurredAt: await this.resolveFinalReceivedAt({
+            documentType,
+            finalRecord,
+            currentRecordId: documentContext.recordId,
+            currentWorkflow: workflow,
+            ocrOccurredAt,
+          }),
         }),
       );
     }
 
     for (const revisao of revisoes) {
+      if (revisao.Status === 'pendente') {
+        continue;
+      }
+
       dynamicEvents.push(mapRevisaoEvent(revisao));
     }
 
@@ -116,6 +156,10 @@ export class ProcessoService {
     }
 
     for (const item of historico) {
+      if (item.Acao === 'edicao' || item.Acao === 'confirmacao') {
+        continue;
+      }
+
       dynamicEvents.push(mapHistoricoToTimelineEvent(item));
     }
 
@@ -150,7 +194,6 @@ export class ProcessoService {
       if (draftRecord) {
         return {
           recordId: draftRecord.Id,
-          createdAt: this.resolveDocumentDate(draftRecord, new Date()),
           blVersion: BL_VERSION.DRAFT,
         };
       }
@@ -164,7 +207,6 @@ export class ProcessoService {
 
     return {
       recordId: resolved.Id,
-      createdAt: this.resolveDocumentDate(resolved, new Date()),
       blVersion,
     };
   }
@@ -187,11 +229,65 @@ export class ProcessoService {
     );
   }
 
-  private resolveDocumentDate(
-    record: { OnboardDate?: Date | null; IssueDate?: Date | null },
-    fallback: Date,
-  ): Date {
-    return record.OnboardDate ?? record.IssueDate ?? fallback;
+  /**
+   * Ingestão OCR = início real do processo (workflow/consulta/histórico).
+   * OnboardDate e IssueDate são datas do BL, sem hora — não servem aqui.
+   */
+  private async resolveOcrIngestedAt(params: {
+    documentType: BlDocumentType;
+    currentRecordId: number;
+    currentWorkflow: BlWorkflow | null;
+    draftRecord: BlVersionRecord | null;
+    finalRecord: BlVersionRecord | null;
+    consultas: Date[];
+    historico: Date[];
+    revisoes: Date[];
+  }): Promise<Date> {
+    const counterpartId = [params.draftRecord?.Id, params.finalRecord?.Id].find(
+      (id) => id != null && id !== params.currentRecordId,
+    );
+    const counterpartWorkflow =
+      counterpartId != null
+        ? await this.findWorkflowByRecord(params.documentType, counterpartId)
+        : null;
+
+    return (
+      earliestDate([
+        params.currentWorkflow?.CreatedAt,
+        counterpartWorkflow?.CreatedAt,
+        ...params.consultas,
+        ...params.historico,
+        ...params.revisoes,
+      ]) ?? new Date()
+    );
+  }
+
+  private async resolveFinalReceivedAt(params: {
+    documentType: BlDocumentType;
+    finalRecord: BlVersionRecord;
+    currentRecordId: number;
+    currentWorkflow: BlWorkflow | null;
+    ocrOccurredAt: Date;
+  }): Promise<Date> {
+    const finalWorkflow =
+      params.finalRecord.Id === params.currentRecordId
+        ? params.currentWorkflow
+        : await this.findWorkflowByRecord(
+            params.documentType,
+            params.finalRecord.Id,
+          );
+    const candidate = finalWorkflow?.CreatedAt ?? params.ocrOccurredAt;
+
+    return candidate < params.ocrOccurredAt ? params.ocrOccurredAt : candidate;
+  }
+
+  private async findWorkflowByRecord(
+    documentType: BlDocumentType,
+    recordId: number,
+  ): Promise<BlWorkflow | null> {
+    return documentType === 'Master'
+      ? blWorkflowRepository.findByMasterId(recordId)
+      : blWorkflowRepository.findByHouseId(recordId);
   }
 }
 

@@ -260,11 +260,13 @@ blRoutes.get(
 // BL version-aware (MasterNumber/HouseNumber + BlVersion)
 
 blRoutes.get(
-
   '/masters/by-number/:masterNumber/bl-final',
-
   blFinalController.getMasterBlFinal,
+);
 
+blRoutes.get(
+  '/houses/by-number/:houseNumber/bl-final',
+  blFinalController.getHouseBlFinal,
 );
 
 blRoutes.get(
@@ -333,6 +335,12 @@ blRoutes.post(
   '/masters/:id/xml-dispatch',
   requirePermission('editar_bl'),
   blLotController.dispatchXml,
+);
+
+blRoutes.post(
+  '/masters/:id/validacao-manual',
+  requirePermission('editar_bl'),
+  blLotController.validacaoManual,
 );
 
 blRoutes.post(

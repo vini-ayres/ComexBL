@@ -197,7 +197,7 @@ export default function ConferenciaHouseMaster() {
       return (
         <OperationalEmptyQueueCard
           title="Nenhuma conferência pendente"
-          description="Não há diferenças de peso, volume ou embalagem entre House e Master aguardando conferência."
+          description="Não há diferenças de quantidade, peso bruto ou volume entre House e Master aguardando conferência."
         />
       )
     }

@@ -2,6 +2,7 @@ import { LDAP_AD_GROUPS } from '../config/ldap-groups.js';
 import { ForbiddenError } from '../errors/AppError.js';
 import { authRepository } from '../repositories/auth.repository.js';
 import type { UserSyncResult } from '../types/auth.types.js';
+import { integrationSettingsService } from './integration-settings.service.js';
 import type { LdapUserEntry } from './ldap.service.js';
 import { ldapService } from './ldap.service.js';
 
@@ -44,7 +45,7 @@ export class UserSyncService {
       syncedAt,
     );
 
-    await prismaUpdateIntegrationSync(syncedAt);
+    await integrationSettingsService.markLdapStatus('conectado', syncedAt);
 
     return {
       syncedAt: syncedAt.toISOString(),
@@ -128,31 +129,6 @@ export class UserSyncService {
 
     activeLogins.add(ldapUser.login.toLowerCase());
   }
-}
-
-async function prismaUpdateIntegrationSync(syncedAt: Date): Promise<void> {
-  const { prisma } = await import('../prisma/client.js');
-  const record = await prisma.appIntegrationConfig.findUnique({
-    where: { Type: 'ldap' },
-  });
-
-  if (!record) {
-    return;
-  }
-
-  const config = JSON.parse(record.ConfigJson) as Record<string, unknown>;
-
-  await prisma.appIntegrationConfig.update({
-    where: { Type: 'ldap' },
-    data: {
-      Status: 'conectado',
-      LastSyncAt: syncedAt,
-      ConfigJson: JSON.stringify({
-        ...config,
-        ultimaSincronizacao: syncedAt.toISOString(),
-      }),
-    },
-  });
 }
 
 export const userSyncService = new UserSyncService();

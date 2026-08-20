@@ -95,51 +95,62 @@ export class BlFinalService {
     houseNumber: string,
     blVersion: BlVersion = BL_VERSION.FINAL,
   ): Promise<BlFinalResponseDto> {
+    const masterNumber = await this.resolveMasterNumberFromHouse(houseNumber);
+
+    if (!masterNumber) {
+      throw new NotFoundError(`House ${houseNumber} não encontrado`);
+    }
+
+    if (blVersion === BL_VERSION.FINAL) {
+      try {
+        return await this.getMasterBlFinal(masterNumber, BL_VERSION.FINAL);
+      } catch (error) {
+        if (!(error instanceof NotFoundError)) {
+          throw error;
+        }
+      }
+
+      throw new NotFoundError(
+        `BL Final do House ${houseNumber} não encontrado. Master ${masterNumber} (FINAL) ausente.`,
+      );
+    }
+
+    return this.getMasterBlFinal(masterNumber, blVersion);
+  }
+
+  private async resolveMasterNumberFromHouse(
+    houseNumber: string,
+  ): Promise<string | null> {
+    const house =
+      (await this.houseRepository.findByHouseNumberAndVersion(
+        houseNumber,
+        BL_VERSION.FINAL,
+      )) ??
+      (await this.houseRepository.findByHouseNumberAndVersion(
+        houseNumber,
+        BL_VERSION.DRAFT,
+      ));
+
+    if (!house) {
+      return null;
+    }
+
+    if (house.BLMasterId != null) {
+      const masterRecord = await this.masterRepository.findById(house.BLMasterId);
+
+      if (masterRecord?.master.MasterNumber) {
+        return masterRecord.master.MasterNumber;
+      }
+    }
+
     const relations =
       await this.houseRepository.findWithRelationsByHouseNumberAndVersion(
         houseNumber,
-        blVersion,
+        house.BlVersion === BL_VERSION.DRAFT
+          ? BL_VERSION.DRAFT
+          : BL_VERSION.FINAL,
       );
 
-    if (!relations) {
-      throw new NotFoundError(
-        `House ${houseNumber} (${blVersion}) não encontrado`,
-      );
-    }
-
-    let master = relations.master;
-
-    if (!master && relations.house.BLMasterId != null) {
-      const masterRecord = await this.masterRepository.findById(
-        relations.house.BLMasterId,
-      );
-      master = masterRecord?.master ?? null;
-    }
-
-    if (!master) {
-      throw new NotFoundError(
-        `Master vinculado ao House ${houseNumber} (${blVersion}) não encontrado`,
-      );
-    }
-
-    const masterNumber = master.MasterNumber;
-
-    const [masterRevisoes, houseRevisoes] = await Promise.all([
-      this.apoioHumanoRepository.findRevisoesByMasterIds([master.Id]),
-      this.apoioHumanoRepository.findRevisoesByHouseIds([relations.house.Id]),
-    ]);
-
-    const houseRevisoesByHouseId = new Map<number, typeof houseRevisoes>([
-      [relations.house.Id, houseRevisoes],
-    ]);
-
-    return mapBlFinalResponse({
-      masterNumber,
-      blVersion,
-      master,
-      houses: [relations],
-      masterRevisoes,
-      houseRevisoesByHouseId,
-    });
+    return relations?.master?.MasterNumber ?? null;
   }
 }

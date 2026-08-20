@@ -1,6 +1,6 @@
 /**
  * DTOs de leitura GlobalSys para comparação de divergências.
- * Representam dados de TB_BL, TB_CARGA_BL e TB_BL_NCM — independentes das entidades OCR.
+ * Representam o SELECT operacional (TB_BL + JOINs Luciana) — independentes das entidades OCR.
  */
 
 export interface GlobalSysMasterDto {
@@ -8,15 +8,22 @@ export interface GlobalSysMasterDto {
   referenceNumber: string | null;
   vesselName: string | null;
   voyage: string | null;
+  carrierName: string | null;
+  carrierScacCode: string | null;
+  freightTerm: string | null;
   loadingPortCode: string | null;
   loadingPortName: string | null;
   dischargePortCode: string | null;
   dischargePortName: string | null;
   shipperName: string | null;
   consigneeName: string | null;
+  packingQuantity: string | null;
+  packingQuantityUnitCode: string | null;
   grossWeight: string | null;
   volumeMeasure: string | null;
   containerNumber: string | null;
+  containerSealNo1: string | null;
+  containerType: string | null;
 }
 
 export interface GlobalSysHouseDto {
@@ -28,9 +35,12 @@ export interface GlobalSysHouseDto {
   loadingPortName: string | null;
   dischargePortCode: string | null;
   dischargePortName: string | null;
+  deliveryPortName: string | null;
+  packingQuantity: string | null;
   grossWeight: string | null;
   volumeMeasure: string | null;
   itemName: string | null;
+  issueDate: string | null;
   containerNumber: string | null;
 }
 

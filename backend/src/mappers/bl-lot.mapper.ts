@@ -35,7 +35,10 @@ export function asXmlDispatchUiStatus(
 export function mapLotHouse(
   house: BlHouse,
   workflow: BlWorkflow | null | undefined,
-  options: { candidate: boolean },
+  options: {
+    candidate: boolean;
+    xmlDispatch?: BlXmlDispatch | null;
+  },
 ): BlLotHouseDto {
   return {
     id: house.Id,
@@ -48,6 +51,9 @@ export function mapLotHouse(
     containerNumber: house.ContainerNumber,
     linked: house.BLMasterId != null,
     candidate: options.candidate,
+    xmlDispatchStatus: xmlDispatchFromRecord(options.xmlDispatch),
+    xmlDispatchedAt: options.xmlDispatch?.DispatchedAt?.toISOString() ?? null,
+    xmlDispatchError: options.xmlDispatch?.LastError ?? null,
   };
 }
 
@@ -92,6 +98,50 @@ export function xmlDispatchFromRecord(
   record: BlXmlDispatch | null | undefined,
 ): XmlDispatchUiStatus {
   return asXmlDispatchUiStatus(record?.Status);
+}
+
+export function groupXmlDispatchesByMasterId(
+  items: BlXmlDispatch[],
+): Map<number, BlXmlDispatch[]> {
+  const map = new Map<number, BlXmlDispatch[]>();
+  for (const item of items) {
+    const list = map.get(item.BlMasterId) ?? [];
+    list.push(item);
+    map.set(item.BlMasterId, list);
+  }
+  return map;
+}
+
+export function indexXmlDispatchesByHouseId(
+  items: BlXmlDispatch[],
+): Map<number, BlXmlDispatch> {
+  const map = new Map<number, BlXmlDispatch>();
+  for (const item of items) {
+    map.set(item.BlHouseId, item);
+  }
+  return map;
+}
+
+export function aggregateXmlDispatchStatus(
+  records: BlXmlDispatch[],
+  houseCount: number,
+): XmlDispatchUiStatus {
+  if (houseCount === 0 || records.length === 0) {
+    return XML_DISPATCH_UI_STATUS.NAO_ENVIADO;
+  }
+  if (
+    records.length >= houseCount &&
+    records.every((record) => record.Status === 'enviado')
+  ) {
+    return XML_DISPATCH_UI_STATUS.ENVIADO;
+  }
+  if (records.some((record) => record.Status === 'falhou')) {
+    return XML_DISPATCH_UI_STATUS.FALHOU;
+  }
+  if (records.some((record) => record.Status === 'pendente')) {
+    return XML_DISPATCH_UI_STATUS.PENDENTE;
+  }
+  return XML_DISPATCH_UI_STATUS.NAO_ENVIADO;
 }
 
 export function formatMasterCreatedAt(master: BlMaster): string {

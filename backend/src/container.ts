@@ -177,6 +177,7 @@ export const blLotService = new BlLotService(
   blXmlDispatchRepository,
   blHistoricoAlteracaoRepository,
   globalSysXmlDispatchService,
+  workflowService,
 );
 
 
@@ -218,6 +219,7 @@ export const apoioHumanoService = new ApoioHumanoService(
 export const dashboardService = new DashboardService(
   dashboardRepository,
   apoioHumanoService,
+  workflowService,
 );
 
 export { processoService };

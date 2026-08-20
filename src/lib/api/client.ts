@@ -128,4 +128,23 @@ export async function apiPatch<T>(
   return response.json() as Promise<T>
 }
 
+export async function apiPut<T>(
+  path: string,
+  body: unknown,
+): Promise<T> {
+  const url = new URL(`${API_BASE}${path}`, window.location.origin)
+
+  const response = await fetch(url.toString(), {
+    method: 'PUT',
+    headers: buildHeaders(true),
+    body: JSON.stringify(body),
+  })
+
+  if (!response.ok) {
+    return parseApiError(response)
+  }
+
+  return response.json() as Promise<T>
+}
+
 export { API_BASE }

@@ -234,7 +234,10 @@ export class ApoioHumanoService {
 
       if (hasCamposPendentes(campos)) {
         pendingEntries.push(entry);
+        continue;
       }
+
+      await this.releaseFromApoioHumanoIfIdle(entry);
     }
 
     await this.persistApoioHumanoStatus(pendingEntries);
@@ -256,6 +259,82 @@ export class ApoioHumanoService {
           `Falha ao gravar status apoio_humano para ${entry.tipo} ${entry.id}: ${message}`,
         );
       }
+    }
+  }
+
+  private async releaseFromApoioHumanoIfIdle(
+    entry: ApoioHumanoQueueEntry,
+  ): Promise<void> {
+    try {
+      if (entry.tipo === 'Master') {
+        const master = await this.repository.findMasterById(entry.id);
+
+        if (!master) {
+          return;
+        }
+
+        const currentStatus = await this.getMasterWorkflowStatus(
+          master.MasterNumber,
+          master.BlVersion,
+        );
+
+        if (currentStatus !== 'apoio_humano') {
+          return;
+        }
+
+        const workflowData: UpdateWorkflowInput = {
+          status: 'conferencia_house_master',
+          pendencia: `Revisão humana concluída (${master.BlVersion}) — aguardando par House/Master do mesmo container`,
+        };
+
+        await this.workflowService.updateWorkflowForMasterDocument(
+          master,
+          workflowData,
+        );
+        await this.conferenciaService.continueAfterApoioHumano(
+          'Master',
+          master.MasterNumber,
+          master.BlVersion,
+        );
+        return;
+      }
+
+      const house = await this.repository.findHouseById(entry.id);
+
+      if (!house) {
+        return;
+      }
+
+      const currentStatus = await this.getHouseWorkflowStatus(
+        house.HouseNumber,
+        house.BlVersion,
+      );
+
+      if (currentStatus !== 'apoio_humano') {
+        return;
+      }
+
+      const workflowData: UpdateWorkflowInput = {
+        status: 'conferencia_house_master',
+        pendencia: `Revisão humana concluída (${house.BlVersion}) — aguardando par House/Master do mesmo container`,
+      };
+
+      await this.workflowService.updateWorkflowForHouseDocument(
+        house,
+        workflowData,
+      );
+      await this.conferenciaService.continueAfterApoioHumano(
+        'House',
+        house.HouseNumber,
+        house.BlVersion,
+      );
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Erro desconhecido';
+
+      logger.error(
+        `Falha ao liberar ${entry.tipo} ${entry.id} do Apoio Humano após ocultar campos: ${message}`,
+      );
     }
   }
 

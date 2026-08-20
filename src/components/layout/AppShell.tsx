@@ -12,7 +12,7 @@ const titles: Record<string, string> = {
   "/processo-finalizado": "Processo Finalizado",
   "/admin/usuarios": "Usuários",
   "/admin/rbac": "Perfis & Permissões",
-  "/admin/bl-database": "BL Master / House",
+  "/admin/bl-database": "Histórico de XML",
   "/admin/ldap": "LDAP / Active Directory",
   "/admin/banco-dados": "Banco de Dados",
 }

@@ -51,8 +51,32 @@ export class AuthRepository {
 
   async listAdGroups() {
     return prisma.appAdGroup.findMany({
-      include: { defaultRole: true },
+      include: {
+        defaultRole: true,
+        _count: { select: { users: true } },
+      },
       orderBy: { Name: 'asc' },
+    });
+  }
+
+  async listRolesWithPermissions() {
+    return prisma.appRole.findMany({
+      include: {
+        permissions: {
+          include: { permission: true },
+        },
+        adGroups: {
+          select: { Id: true, Name: true },
+          orderBy: { Name: 'asc' },
+        },
+        _count: { select: { users: true } },
+      },
+    });
+  }
+
+  async listPermissionCatalog() {
+    return prisma.appPermission.findMany({
+      orderBy: { Id: 'asc' },
     });
   }
 

@@ -14,8 +14,10 @@ export interface DashboardBlListItemDto {
   tipo: 'Master' | 'House';
   status: BlStatus;
   pendencia: string;
+  blVersion: string;
   responsavel: string | null;
   dataHora: string;
+  masterNumber?: string;
   navio?: string;
   viagem?: string;
   origem?: string;
@@ -42,12 +44,14 @@ export interface DashboardOperationalRow {
   tipo: 'Master' | 'House';
   blId: number;
   numeroBl: string;
+  masterNumber: string | null;
   navio: string | null;
   viagem: string | null;
   origem: string | null;
   destino: string | null;
   status: BlStatus;
   pendencia: string | null;
+  blVersion: string | null;
   responsavel: string | null;
   confianca: number | null;
   dataHora: Date;
