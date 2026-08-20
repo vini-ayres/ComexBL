@@ -1,11 +1,11 @@
 import { useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { Ship, Lock, User, ShieldCheck, Loader2, Network, KeyRound, Copy, Check } from "lucide-react"
+import { Ship, Lock, User, ShieldCheck, Loader2, Network } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent } from "@/components/ui/card"
-import { useAuth, TEST_USER_CREDENTIALS } from "@/hooks/useAuth"
+import { useAuth } from "@/hooks/useAuth"
 import { motion } from "framer-motion"
 
 export default function Login() {
@@ -13,21 +13,8 @@ export default function Login() {
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
-  const [copied, setCopied] = useState(false)
   const { loginWithLdap } = useAuth()
   const navigate = useNavigate()
-
-  function fillTestUser() {
-    setLogin(TEST_USER_CREDENTIALS.login)
-    setPassword(TEST_USER_CREDENTIALS.password)
-    setError("")
-  }
-
-  function copyCredentials() {
-    navigator.clipboard?.writeText(`${TEST_USER_CREDENTIALS.login} / ${TEST_USER_CREDENTIALS.password}`)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 1500)
-  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -44,13 +31,11 @@ export default function Login() {
 
   return (
     <div className="min-h-screen w-full flex bg-primary-950 relative overflow-hidden">
-      {/* Background decor */}
       <div className="absolute inset-0 opacity-[0.06] pointer-events-none"
         style={{ backgroundImage: "radial-gradient(circle at 2px 2px, white 1px, transparent 0)", backgroundSize: "28px 28px" }} />
       <div className="absolute -top-32 -right-32 h-96 w-96 rounded-full bg-accent/20 blur-3xl" />
       <div className="absolute -bottom-32 -left-32 h-96 w-96 rounded-full bg-primary-400/20 blur-3xl" />
 
-      {/* Left branding panel */}
       <div className="hidden lg:flex flex-1 flex-col justify-between p-12 text-white relative z-10">
         <div className="flex items-center gap-3">
           <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-accent shadow-soft">
@@ -75,7 +60,7 @@ export default function Login() {
             {[
               "Consulta e validação de dados extraídos automaticamente",
               "Comparação BL Final x GlobalSys com trilha de auditoria",
-              "Autenticação corporativa via LDAP / Active Directory",
+              "Autenticação corporativa via LDAP / Active Directory (BIND)",
             ].map((f) => (
               <div key={f} className="flex items-center gap-2.5 text-sm text-primary-100">
                 <ShieldCheck className="h-4 w-4 text-accent shrink-0" />
@@ -88,7 +73,6 @@ export default function Login() {
         <p className="text-xs text-primary-400">© 2026 ComexBL · Ambiente Corporativo Interno</p>
       </div>
 
-      {/* Right form panel */}
       <div className="flex flex-1 items-center justify-center p-6 relative z-10">
         <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }} className="w-full max-w-sm">
           <Card className="shadow-elevated border-white/10">
@@ -148,34 +132,9 @@ export default function Login() {
                 </Button>
               </form>
 
-              <div className="mt-6 rounded-lg border border-accent-100 bg-accent-50 px-3 py-3">
-                <div className="flex items-center justify-between">
-                  <p className="flex items-center gap-1.5 text-xs font-semibold text-accent-700">
-                    <KeyRound className="h-3.5 w-3.5" /> Usuário de teste
-                  </p>
-                  <button
-                    type="button"
-                    onClick={copyCredentials}
-                    className="flex items-center gap-1 text-[11px] font-medium text-accent-700 hover:text-accent-800"
-                  >
-                    {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-                    {copied ? "Copiado" : "Copiar"}
-                  </button>
-                </div>
-                <div className="mt-2 flex items-center justify-between gap-2 rounded-md bg-white/70 px-2.5 py-1.5">
-                  <code className="text-xs text-primary-900">
-                    <span className="text-muted-foreground">login:</span> <strong>{TEST_USER_CREDENTIALS.login}</strong>{"  "}
-                    <span className="text-muted-foreground">senha:</span> <strong>{TEST_USER_CREDENTIALS.password}</strong>
-                  </code>
-                  <Button type="button" variant="accent" size="xs" onClick={fillTestUser}>
-                    Preencher
-                  </Button>
-                </div>
-              </div>
-
-              <div className="mt-3 flex items-center gap-2 rounded-lg bg-primary-50 px-3 py-2.5 text-[11px] text-primary-700">
+              <div className="mt-6 flex items-center gap-2 rounded-lg bg-primary-50 px-3 py-2.5 text-[11px] text-primary-700">
                 <ShieldCheck className="h-4 w-4 shrink-0 text-primary-500" />
-                Usuários são provisionados automaticamente via sincronismo de grupos do AD.
+                Senhas não são armazenadas. O login valida credenciais diretamente no AD via BIND.
               </div>
             </CardContent>
           </Card>

@@ -43,19 +43,14 @@ function mapBooleanStatus(status: boolean): BlStatus {
   return status ? 'finalizado' : 'processando';
 }
 
-function buildOrigemArquivo(
-  itemId: string | null,
-  driveId: string | null,
-): string {
-  if (itemId && driveId) {
-    return `/OneDrive/${driveId}/${itemId}`;
+function buildOrigemArquivo(fileName: string | null): string {
+  const name = fileName?.trim();
+
+  if (!name) {
+    return '-';
   }
 
-  if (itemId) {
-    return `/OneDrive/${itemId}`;
-  }
-
-  return '-';
+  return `files/${name}`;
 }
 
 function mapMasterContainers(master: BlMaster): ContainerDto[] {
@@ -91,16 +86,16 @@ function mapHouseContainers(house: BlHouse): ContainerDto[] {
 }
 
 function mapHouseDocumentos(house: BlHouse): DocumentoDto[] {
-  if (!house.ItemId && !house.DriveId) {
+  const fileName = house.FileName?.trim();
+
+  if (!fileName) {
     return [];
   }
 
-  const nome = house.HouseNumber ? `${house.HouseNumber}.pdf` : 'documento.pdf';
-
   return [
     {
-      nome,
-      url: buildOrigemArquivo(house.ItemId, house.DriveId),
+      nome: fileName,
+      url: buildOrigemArquivo(fileName),
       tipo: 'pdf',
     },
   ];
@@ -136,7 +131,7 @@ export function mapBlMasterDetail({
     dataEmbarque: formatDateOptional(master.OnboardDate),
     dataChegadaPrevista: formatDateOptional(master.ArrivalDate),
     pesoBrutoTotal: formatDecimal(master.GrossWeight, ' KG'),
-    origemArquivo: buildOrigemArquivo(master.ItemId, master.DriveId),
+    origemArquivo: buildOrigemArquivo(master.FileName),
     updatedAt: (master.ArrivalDate ?? master.OnboardDate ?? new Date(0)).toISOString(),
     containers: mapMasterContainers(master),
     houses: houses.map(mapBlHouseSummary),
@@ -164,7 +159,7 @@ export function mapBlHouseDetail({
     consignatario: house.ConsigneeName ?? '-',
     notify: house.NotifyName ?? '-',
     pesoBruto: formatDecimal(house.GrossWeight ?? house.ContainerGWT, ' KG'),
-    origemArquivo: buildOrigemArquivo(house.ItemId, house.DriveId),
+    origemArquivo: buildOrigemArquivo(house.FileName),
     createdAt: (house.IssueDate ?? new Date(0)).toISOString(),
     updatedAt: (house.IssueDate ?? new Date(0)).toISOString(),
     containers: mapHouseContainers(house),

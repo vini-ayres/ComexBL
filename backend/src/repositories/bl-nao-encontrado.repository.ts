@@ -1,14 +1,12 @@
-import type { Prisma } from '@prisma/client';
-import { prisma } from '../prisma/client.js';
 import type { BlNaoEncontradoQueueRow } from '../types/bl-nao-encontrado.types.js';
+import type { BlDocumentType } from '../types/bl-domain.types.js';
+import { prisma } from '../prisma/client.js';
 
 const TEST_USER_LOGIN = 'teste';
 
-export interface RecordConsultaParams {
-  tipo: 'Master' | 'House';
+export interface BlDocumentPendingConsulta {
+  tipo: BlDocumentType;
   blId: number;
-  found: boolean;
-  detalhe: string;
 }
 
 export class BlNaoEncontradoRepository {
@@ -21,7 +19,7 @@ export class BlNaoEncontradoRepository {
         tentativasConsulta: number;
         ultimaTentativa: Date;
         ultimoDetalhe: string | null;
-        driveId: string | null;
+        fileName: string | null;
         dataReferencia: Date | null;
       }[]
     >`
@@ -49,7 +47,7 @@ export class BlNaoEncontradoRepository {
         q.tentativasConsulta,
         q.ultimaTentativa,
         q.ultimoDetalhe,
-        q.driveId,
+        q.fileName,
         q.dataReferencia
       FROM (
         SELECT
@@ -63,7 +61,7 @@ export class BlNaoEncontradoRepository {
           ) AS tentativasConsulta,
           lc.ExecutadoEm AS ultimaTentativa,
           lc.Detalhe AS ultimoDetalhe,
-          m.DriveId AS driveId,
+          m.FileName AS fileName,
           COALESCE(m.OnboardDate, m.ArrivalDate) AS dataReferencia
         FROM BL_Master m
         INNER JOIN LatestConsulta lc ON lc.BlMasterId = m.Id AND lc.rn = 1
@@ -82,7 +80,7 @@ export class BlNaoEncontradoRepository {
           ) AS tentativasConsulta,
           lc.ExecutadoEm AS ultimaTentativa,
           lc.Detalhe AS ultimoDetalhe,
-          h.DriveId AS driveId,
+          h.FileName AS fileName,
           COALESCE(h.IssueDate, GETDATE()) AS dataReferencia
         FROM BL_House h
         INNER JOIN LatestConsulta lc ON lc.BlHouseId = h.Id AND lc.rn = 1
@@ -98,150 +96,43 @@ export class BlNaoEncontradoRepository {
       tentativasConsulta: Number(row.tentativasConsulta),
       ultimaTentativa: row.ultimaTentativa,
       ultimoDetalhe: row.ultimoDetalhe,
-      driveId: row.driveId,
+      fileName: row.fileName,
       dataReferencia: row.dataReferencia,
     }));
   }
 
-  async findMasterById(id: number) {
-    return prisma.blMaster.findUnique({ where: { Id: id } });
-  }
+  async findDocumentsPendingConsulta(): Promise<BlDocumentPendingConsulta[]> {
+    const rows = await prisma.$queryRaw<
+      { tipo: string; blId: number }[]
+    >`
+      SELECT 'Master' AS tipo, m.Id AS blId
+      FROM BL_Master m
+      LEFT JOIN BL_Workflow w ON w.BlMasterId = m.Id
+      WHERE NOT EXISTS (
+        SELECT 1 FROM BL_ConsultaGlobalSys c WHERE c.BlMasterId = m.Id
+      )
+      AND (w.Id IS NULL OR w.Status NOT IN ('finalizado', 'divergencia', 'conferencia_house_master'))
 
-  async findHouseById(id: number) {
-    return prisma.blHouse.findUnique({ where: { Id: id } });
-  }
+      UNION ALL
 
-  async countConsultas(tipo: 'Master' | 'House', blId: number): Promise<number> {
-    if (tipo === 'Master') {
-      return prisma.blConsultaGlobalSys.count({
-        where: { BlMasterId: blId },
-      });
-    }
+      SELECT 'House' AS tipo, h.Id AS blId
+      FROM BL_House h
+      LEFT JOIN BL_Workflow w ON w.BlHouseId = h.Id
+      WHERE NOT EXISTS (
+        SELECT 1 FROM BL_ConsultaGlobalSys c WHERE c.BlHouseId = h.Id
+      )
+      AND (w.Id IS NULL OR w.Status NOT IN ('finalizado', 'divergencia', 'conferencia_house_master'))
+    `;
 
-    return prisma.blConsultaGlobalSys.count({
-      where: { BlHouseId: blId },
-    });
-  }
-
-  async getLatestConsultaSuccess(
-    tipo: 'Master' | 'House',
-    blId: number,
-  ): Promise<boolean | null> {
-    const latest = await prisma.blConsultaGlobalSys.findFirst({
-      where:
-        tipo === 'Master'
-          ? { BlMasterId: blId }
-          : { BlHouseId: blId },
-      orderBy: { ExecutadoEm: 'desc' },
-      select: { Sucesso: true },
-    });
-
-    return latest?.Sucesso ?? null;
+    return rows.map((row) => ({
+      tipo: row.tipo as BlDocumentType,
+      blId: row.blId,
+    }));
   }
 
   async findTestUser() {
     return prisma.appUser.findUnique({
       where: { Login: TEST_USER_LOGIN },
-    });
-  }
-
-  async recordConsulta(params: RecordConsultaParams): Promise<{
-    tentativaNumero: number;
-    workflowStatus: string;
-  }> {
-    const user = await this.findTestUser();
-
-    if (!user) {
-      throw new Error(
-        `Usuário de teste "${TEST_USER_LOGIN}" não encontrado. Execute npm run prisma:seed.`,
-      );
-    }
-
-    const tentativaNumero = (await this.countConsultas(params.tipo, params.blId)) + 1;
-    const workflowStatus = params.found ? 'processando' : 'nao_encontrado';
-    const pendencia = params.found
-      ? 'BL localizado no GlobalSys'
-      : 'BL não localizado no GlobalSys';
-
-    await prisma.$transaction(async (tx) => {
-      await tx.blConsultaGlobalSys.create({
-        data: {
-          BlMasterId: params.tipo === 'Master' ? params.blId : null,
-          BlHouseId: params.tipo === 'House' ? params.blId : null,
-          TentativaNumero: tentativaNumero,
-          Sucesso: params.found,
-          Detalhe: params.detalhe,
-        },
-      });
-
-      await this.upsertWorkflow(tx, {
-        tipo: params.tipo,
-        blId: params.blId,
-        status: workflowStatus,
-        pendencia,
-        userId: user.Id,
-      });
-    });
-
-    return { tentativaNumero, workflowStatus };
-  }
-
-  private async upsertWorkflow(
-    tx: Prisma.TransactionClient,
-    params: {
-      tipo: 'Master' | 'House';
-      blId: number;
-      status: string;
-      pendencia: string;
-      userId: number;
-    },
-  ): Promise<void> {
-    const workflowData = {
-      TipoBl: params.tipo,
-      Status: params.status,
-      Pendencia: params.pendencia,
-      ResponsavelUserId: params.userId,
-    };
-
-    if (params.tipo === 'Master') {
-      const existing = await tx.blWorkflow.findUnique({
-        where: { BlMasterId: params.blId },
-      });
-
-      if (existing) {
-        await tx.blWorkflow.update({
-          where: { Id: existing.Id },
-          data: workflowData,
-        });
-        return;
-      }
-
-      await tx.blWorkflow.create({
-        data: {
-          BlMasterId: params.blId,
-          ...workflowData,
-        },
-      });
-      return;
-    }
-
-    const existing = await tx.blWorkflow.findUnique({
-      where: { BlHouseId: params.blId },
-    });
-
-    if (existing) {
-      await tx.blWorkflow.update({
-        where: { Id: existing.Id },
-        data: workflowData,
-      });
-      return;
-    }
-
-    await tx.blWorkflow.create({
-      data: {
-        BlHouseId: params.blId,
-        ...workflowData,
-      },
     });
   }
 }

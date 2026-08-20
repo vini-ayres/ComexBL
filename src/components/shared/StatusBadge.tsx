@@ -1,4 +1,4 @@
-import { AlertTriangle, UserCog, Loader2, CheckCircle2, HelpCircle } from "lucide-react"
+import { AlertTriangle, UserCog, Scale, Loader2, CheckCircle2, HelpCircle } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import type { BLStatus } from "@/types"
 import { cn } from "@/lib/utils"
@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils"
 const statusConfig: Record<BLStatus, { label: string; variant: "danger" | "warning" | "info" | "success" | "neutral"; icon: React.ElementType; dotColor: string }> = {
   divergencia: { label: "Divergência", variant: "danger", icon: AlertTriangle, dotColor: "bg-danger" },
   apoio_humano: { label: "Apoio Humano", variant: "warning", icon: UserCog, dotColor: "bg-warning" },
+  conferencia_house_master: { label: "Conferência House/Master", variant: "info", icon: Scale, dotColor: "bg-info" },
   processando: { label: "Processando", variant: "info", icon: Loader2, dotColor: "bg-info" },
   finalizado: { label: "Finalizado", variant: "success", icon: CheckCircle2, dotColor: "bg-success" },
   nao_encontrado: { label: "Não Encontrado", variant: "neutral", icon: HelpCircle, dotColor: "bg-gray-500" },

@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState } from "react"
 import {
   AlertOctagon, RefreshCcw, Link2, ExternalLink, XCircle, Calendar,
-  FileText, ChevronRight, Clock, Loader2,
+  ChevronRight, Clock, Loader2,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { DocumentViewer } from "@/components/shared/DocumentViewer"
+import { OperationalEmptyQueueCard } from "@/components/shared/OperationalEmptyQueueCard"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -116,31 +117,25 @@ export default function BLNaoEncontrado() {
     )
   }
 
+  if (items.length === 0) {
+    return (
+      <OperationalEmptyQueueCard
+        title="Nenhum BL pendente de localização no GlobalSys"
+        description="Todos os documentos foram localizados no GlobalSys ou não aguardam ação manual."
+      />
+    )
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-3 rounded-xl border border-danger-100 bg-danger-50 px-4 py-3">
         <AlertOctagon className="h-5 w-5 text-danger-600 shrink-0" />
         <p className="text-sm text-danger-700">
-          {items.length === 0 ? (
-            "Nenhum BL pendente — todos os registros foram localizados no GlobalSys."
-          ) : (
-            <>
-              <span className="font-semibold">{items.length} BLs</span> identificados pelo OCR não foram localizados no GlobalSys. Ação manual necessária.
-            </>
-          )}
+          <span className="font-semibold">{items.length} BLs</span> identificados pelo OCR não foram localizados no GlobalSys. Ação manual necessária.
         </p>
       </div>
 
-      {items.length === 0 ? (
-        <Card>
-          <CardContent className="py-12 text-center text-muted-foreground">
-            <FileText className="h-10 w-10 mx-auto mb-3 opacity-40" />
-            <p className="font-medium">Fila vazia</p>
-            <p className="text-sm mt-1">Não há BLs com última consulta &quot;Não Encontrado&quot; no GlobalSys.</p>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-[340px_1fr] gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-[340px_1fr] gap-6">
           <Card className="h-fit">
             <CardHeader>
               <CardTitle className="text-sm">Fila de Pendências</CardTitle>
@@ -201,15 +196,21 @@ export default function BLNaoEncontrado() {
                       )}
                       Consultar novamente
                     </Button>
-                    <Button variant="accent" onClick={() => setAssocOpen(true)}>
+                    {/*<Button variant="accent" onClick={() => setAssocOpen(true)}>
                       <Link2 className="h-4 w-4" /> Associar manualmente
-                    </Button>
-                    <Button variant="outline">
-                      <ExternalLink className="h-4 w-4" /> Abrir cadastro GlobalSys
-                    </Button>
-                    <Button variant="ghost" className="text-muted-foreground" onClick={handleIgnorar}>
+                    </Button> */}
+                    <a
+                      href="http://globalsyshomolog.fcalog.com.br/"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <Button variant="accent">
+                        <ExternalLink className="h-4 w-4" /> Abrir GlobalSys
+                      </Button>
+                    </a>
+                    {/* <Button variant="ghost" className="text-muted-foreground" onClick={handleIgnorar}>
                       <XCircle className="h-4 w-4" /> Ignorar
-                    </Button>
+                    </Button> */}
                   </div>
                 </CardContent>
               </Card>
@@ -218,11 +219,11 @@ export default function BLNaoEncontrado() {
                 nome={selected.documento.nome}
                 paginas={selected.documento.paginas}
                 origemPath={selected.documento.origemPath}
+                fileName={selected.documento.fileName}
               />
             </div>
           )}
         </div>
-      )}
 
       <Dialog open={assocOpen} onOpenChange={setAssocOpen}>
         <DialogContent>

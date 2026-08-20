@@ -1,27 +1,32 @@
-# prod
+# Build outputs
 dist/
 backend/dist/
+*.tsbuildinfo
 
-# dev
+# Dependencies
+node_modules/
 .yarn/
 !.yarn/releases
-.vscode/*
-!.vscode/launch.json
-!.vscode/*.code-snippets
-.idea/workspace.xml
-.idea/usage.statistics.xml
-.idea/shelf
 
-# deps
-node_modules/
-.wrangler
+# Cloudflare Wrangler
+.wrangler/
 
-# env
+# Environment — secrets and local overrides (keep *.example tracked)
 .env
+.env.local
+.env.*.local
+backend/.env
 .env.production
 .dev.vars
+!.env.example
+!**/.env.example
+!.env.*.example
 
-# logs
+# OCR binary files (n8n → local preview)
+files/*
+!files/.gitkeep
+
+# Logs
 logs/
 *.log
 npm-debug.log*
@@ -30,6 +35,20 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-# misc
+# IDE / editor
+.vscode/*
+!.vscode/launch.json
+!.vscode/*.code-snippets
+.idea/
+
+# Tooling caches
+.vite/
+
+# Test coverage
+coverage/
+
+# OS
 .DS_Store
-.wrangler/
+Thumbs.db
+Desktop.ini
+ehthumbs.db

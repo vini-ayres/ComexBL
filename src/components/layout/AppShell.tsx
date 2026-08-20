@@ -7,14 +7,13 @@ const titles: Record<string, string> = {
   "/": "Dashboard Operacional",
   "/bl-nao-encontrado": "BL Não Encontrado no GlobalSys",
   "/apoio-humano": "Apoio Humano",
+  "/conferencia-house-master": "Conferência House × Master",
   "/divergencia": "Divergência BL Final x GlobalSys",
   "/processo-finalizado": "Processo Finalizado",
   "/admin/usuarios": "Usuários",
   "/admin/rbac": "Perfis & Permissões",
-  "/admin/auditoria": "Auditoria",
-  "/admin/bl-database": "BL Master / House",
+  "/admin/bl-database": "Histórico de XML",
   "/admin/ldap": "LDAP / Active Directory",
-  "/admin/onedrive": "Integração OneDrive",
   "/admin/banco-dados": "Banco de Dados",
 }
 
@@ -35,6 +34,7 @@ export function AppShell() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -8 }}
               transition={{ duration: 0.18 }}
+              className="min-w-0 max-w-full"
             >
               <Outlet />
             </motion.div>

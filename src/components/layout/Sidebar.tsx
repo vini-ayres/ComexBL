@@ -1,17 +1,19 @@
 import { NavLink } from "react-router-dom"
 import {
-  LayoutDashboard, FileWarning, UserCog, GitCompareArrows, CheckCircle2,
-  Users, ShieldCheck, ScrollText, Settings, Network, Cloud, Database,
+  LayoutDashboard, FileWarning, UserCog, ClipboardCheck, GitCompareArrows, CheckCircle2,
+  Users, ShieldCheck, Settings, Network, History,
   ChevronLeft, ChevronRight, Ship,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { useState } from "react"
+import { useAuth } from "@/hooks/useAuth"
+import { useMemo, useState } from "react"
 
 interface NavItem {
   to: string
   label: string
   icon: React.ElementType
   badge?: number
+  permissions?: string[]
 }
 
 interface NavSection {
@@ -23,43 +25,57 @@ const sections: NavSection[] = [
   {
     title: "Operação",
     items: [
-      { to: "/", label: "Dashboard", icon: LayoutDashboard },
-      { to: "/bl-nao-encontrado", label: "BL Não Encontrado", icon: FileWarning, badge: 3 },
-      { to: "/apoio-humano", label: "Apoio Humano", icon: UserCog, badge: 5 },
-      { to: "/divergencia", label: "Divergências", icon: GitCompareArrows, badge: 7 },
-      { to: "/processo-finalizado", label: "Processos Finalizados", icon: CheckCircle2 },
+      { to: "/", label: "Dashboard", icon: LayoutDashboard, permissions: ["visualizar_bl"] },
+      { to: "/bl-nao-encontrado", label: "BL Não Encontrado", icon: FileWarning, permissions: ["visualizar_bl"] },
+      { to: "/apoio-humano", label: "Apoio Humano", icon: UserCog, permissions: ["visualizar_bl"] },
+      { to: "/conferencia-house-master", label: "Conferência House/Master", icon: ClipboardCheck, permissions: ["visualizar_bl"] },
+      { to: "/divergencia", label: "Divergências", icon: GitCompareArrows, permissions: ["visualizar_bl"] },
+      { to: "/processo-finalizado", label: "Processos Finalizados", icon: CheckCircle2, permissions: ["visualizar_bl"] },
+      { to: "/admin/bl-database", label: "Histórico de XML", icon: History, permissions: ["visualizar_bl"] },
     ],
   },
   {
     title: "Administração",
     items: [
-      { to: "/admin/usuarios", label: "Usuários", icon: Users },
-      { to: "/admin/rbac", label: "Perfis & Permissões", icon: ShieldCheck },
-      { to: "/admin/auditoria", label: "Auditoria", icon: ScrollText },
-      { to: "/admin/bl-database", label: "BL Master / House", icon: Database },
+      { to: "/admin/usuarios", label: "Usuários", icon: Users, permissions: ["administrar_usuarios"] },
+      { to: "/admin/rbac", label: "Perfis & Permissões", icon: ShieldCheck, permissions: ["administrar_usuarios"] },
     ],
   },
   {
     title: "Integrações",
     items: [
-      { to: "/admin/ldap", label: "LDAP / Active Directory", icon: Network },
-      { to: "/admin/onedrive", label: "OneDrive", icon: Cloud },
-      { to: "/admin/banco-dados", label: "Banco de Dados", icon: Settings },
+      { to: "/admin/ldap", label: "LDAP / Active Directory", icon: Network, permissions: ["configurar_integracoes"] },
+      { to: "/admin/banco-dados", label: "Banco de Dados", icon: Settings, permissions: ["configurar_integracoes"] },
     ],
   },
 ]
 
 export function Sidebar() {
   const [collapsed, setCollapsed] = useState(false)
+  const { hasAnyPermission } = useAuth()
+
+  const visibleSections = useMemo(() => {
+    return sections
+      .map((section) => ({
+        ...section,
+        items: section.items.filter((item) =>
+          !item.permissions?.length || hasAnyPermission(item.permissions),
+        ),
+      }))
+      .filter((section) => section.items.length > 0)
+  }, [hasAnyPermission])
 
   return (
     <aside
       className={cn(
         "hidden lg:flex flex-col shrink-0 bg-primary text-white transition-all duration-300 h-screen sticky top-0",
-        collapsed ? "w-[76px]" : "w-64"
+        collapsed ? "w-16" : "w-64"
       )}
     >
-      <div className="flex items-center gap-2.5 h-16 px-4 border-b border-white/10">
+      <div className={cn(
+        "flex items-center h-16 border-b border-white/10",
+        collapsed ? "justify-center px-2" : "gap-2.5 px-4",
+      )}>
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent shadow-soft">
           <Ship className="h-5 w-5 text-white" />
         </div>
@@ -71,8 +87,11 @@ export function Sidebar() {
         )}
       </div>
 
-      <nav className="flex-1 overflow-y-auto scrollbar-thin px-3 py-4 space-y-6">
-        {sections.map((section) => (
+      <nav className={cn(
+        "flex-1 overflow-y-auto scrollbar-thin py-4 space-y-6",
+        collapsed ? "px-1.5" : "px-3",
+      )}>
+        {visibleSections.map((section) => (
           <div key={section.title}>
             {!collapsed && (
               <p className="px-2 mb-2 text-[10px] font-bold uppercase tracking-wider text-primary-300">
@@ -87,7 +106,8 @@ export function Sidebar() {
                     end={item.to === "/"}
                     className={({ isActive }) =>
                       cn(
-                        "group flex items-center gap-3 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors relative",
+                        "group flex items-center rounded-lg py-2 text-sm font-medium transition-colors relative",
+                        collapsed ? "justify-center px-2 gap-0" : "gap-3 px-2.5",
                         isActive
                           ? "bg-white/10 text-white"
                           : "text-primary-200 hover:bg-white/5 hover:text-white"
@@ -116,7 +136,7 @@ export function Sidebar() {
         ))}
       </nav>
 
-      <div className="p-3 border-t border-white/10">
+      <div className={cn("border-t border-white/10", collapsed ? "p-2" : "p-3")}>
         <button
           onClick={() => setCollapsed((c) => !c)}
           className="flex w-full items-center justify-center gap-2 rounded-lg py-2 text-primary-200 hover:bg-white/5 hover:text-white transition-colors text-sm"

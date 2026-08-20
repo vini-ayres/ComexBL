@@ -78,7 +78,7 @@ export function escapeSqlServerValue(value: string): string {
   return `{${escaped}}`;
 }
 
-function buildDatabaseUrl(options: {
+export function buildDatabaseUrl(options: {
   server: string;
   port: number;
   user: string;
@@ -136,6 +136,7 @@ const gsDbName = optionalEnv('GS_DB_NAME');
 const gsDbDomain = optionalEnv('GS_DB_DOMAIN');
 const gsDbUser = optionalEnv('GS_DB_USER');
 const gsDbPassword = optionalEnv('GS_DB_PASSWORD');
+const gsDbAuthMode = optionalEnv('GS_DB_AUTH_MODE');
 const gsDbEncrypt = parseBooleanEnv('GS_DB_ENCRYPT', false);
 const gsDbTrustServerCertificate = parseBooleanEnv(
   'GS_DB_TRUST_SERVER_CERTIFICATE',
@@ -150,6 +151,23 @@ const gsDbRequestTimeout = parsePositiveIntEnv('GS_DB_REQUEST_TIMEOUT', 30000);
 const globalsysEnabled = Boolean(
   gsDbServer && gsDbName && gsDbUser && gsDbPassword,
 );
+
+const n8nWebhookEnviarXmlGlobalsysUrl = optionalEnv(
+  'N8N_WEBHOOK_ENVIAR_XML_GLOBALSYS_URL',
+);
+
+const filesDir =
+  optionalEnv('FILES_DIR') ??
+  resolve(__dirname, '../../../files');
+
+const ldapUrl =
+  optionalEnv('LDAP_URL') ??
+  (optionalEnv('LDAP_HOST')
+    ? `${parseBooleanEnv('LDAP_USE_TLS', false) ? 'ldaps' : 'ldap'}://${optionalEnv('LDAP_HOST')}:${parsePositiveIntEnv('LDAP_PORT', 389)}`
+    : undefined);
+
+const jwtSecret = optionalEnv('JWT_SECRET') ?? 'dev-insecure-jwt-secret-change-me';
+const jwtExpiresIn = optionalEnv('JWT_EXPIRES_IN') ?? '8h';
 
 export const env = {
   nodeEnv: process.env.NODE_ENV ?? 'development',
@@ -173,12 +191,39 @@ export const env = {
     port: gsDbPort,
     name: gsDbName ?? '',
     domain: gsDbDomain,
+    authMode: gsDbAuthMode,
     user: gsDbUser ?? '',
     password: gsDbPassword ?? '',
     encrypt: gsDbEncrypt,
     trustServerCertificate: gsDbTrustServerCertificate,
     connectionTimeoutMs: gsDbConnectionTimeout,
     requestTimeoutMs: gsDbRequestTimeout,
+  },
+  n8n: {
+    webhookEnviarXmlGlobalsysUrl: n8nWebhookEnviarXmlGlobalsysUrl,
+  },
+  files: {
+    /** Pasta local onde o n8n grava os binários pós-OCR. */
+    dir: filesDir,
+  },
+  ldap: {
+    enabled: Boolean(
+      ldapUrl &&
+        optionalEnv('LDAP_BASE_DN') &&
+        (optionalEnv('LDAP_BIND_DN') || optionalEnv('LDAP_BIND_UPN')) &&
+        optionalEnv('LDAP_BIND_PASSWORD'),
+    ),
+    url: ldapUrl ?? '',
+    baseDn: optionalEnv('LDAP_BASE_DN') ?? '',
+    bindDn: optionalEnv('LDAP_BIND_DN') ?? '',
+    bindUpn: optionalEnv('LDAP_BIND_UPN') ?? '',
+    bindPassword: optionalEnv('LDAP_BIND_PASSWORD') ?? '',
+    useTls: parseBooleanEnv('LDAP_USE_TLS', false),
+    groupPrefix: optionalEnv('LDAP_GROUP_PREFIX') ?? 'GG_OCR_BL_',
+  },
+  jwt: {
+    secret: jwtSecret,
+    expiresIn: jwtExpiresIn,
   },
 } as const;
 

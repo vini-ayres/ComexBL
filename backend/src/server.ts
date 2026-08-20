@@ -5,6 +5,7 @@ import { env } from './config/env.js';
 import { logger } from './config/logger.js';
 import { connectPrisma, disconnectPrisma } from './prisma/client.js';
 import { databaseRepository } from './repositories/database.repository.js';
+import { integrationSettingsService } from './services/integration-settings.service.js';
 import { HealthService } from './services/health.service.js';
 
 async function bootstrap(): Promise<void> {
@@ -16,6 +17,14 @@ async function bootstrap(): Promise<void> {
   );
 
   await connectPrisma();
+  try {
+    await integrationSettingsService.applyStoredLocalDbOverride();
+  } catch (error) {
+    logger.error(
+      'Não foi possível aplicar a configuração de banco local salva na tela; usando o .env',
+      error,
+    );
+  }
 
   const healthService = new HealthService(databaseRepository);
   await healthService.assertDatabaseConnection();

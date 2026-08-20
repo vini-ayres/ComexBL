@@ -22,11 +22,13 @@ export function fetchBlNaoEncontradoDetail(tipo: 'Master' | 'House', id: number)
 export function reprocessarConsultaGlobalSys(tipo: 'Master' | 'House', id: number) {
   return apiPost<GlobalSysConsultaResponseDto>(
     `/bl/nao-encontrado/${tipo.toLowerCase()}/${id}/reprocessar`,
+    {},
   )
 }
 
 export function consultarGlobalSys(tipo: 'Master' | 'House', id: number) {
   return apiPost<GlobalSysConsultaResponseDto>(
     `/bl/globalsys/consultar/${tipo.toLowerCase()}/${id}`,
+    {},
   )
 }

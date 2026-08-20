@@ -13,12 +13,14 @@ interface OperationalDbRow {
   tipo: string;
   blId: number;
   numeroBl: string;
+  masterNumber: string | null;
   navio: string | null;
   viagem: string | null;
   origem: string | null;
   destino: string | null;
   status: string;
   pendencia: string | null;
+  blVersion: string | null;
   responsavel: string | null;
   confianca: number | null;
   dataHora: Date;
@@ -36,12 +38,14 @@ function mapOperationalRow(row: OperationalDbRow): DashboardOperationalRow {
     tipo: row.tipo as 'Master' | 'House',
     blId: row.blId,
     numeroBl: row.numeroBl,
+    masterNumber: row.masterNumber,
     navio: row.navio,
     viagem: row.viagem,
     origem: row.origem,
     destino: row.destino,
     status: row.status as BlStatus,
     pendencia: row.pendencia,
+    blVersion: row.blVersion,
     responsavel: row.responsavel,
     confianca: row.confianca,
     dataHora: row.dataHora,
@@ -61,7 +65,7 @@ function buildFilterSql(filters: DashboardFilters) {
     ? Prisma.sql`AND (
         op.numeroBl LIKE ${`%${filters.search}%`}
         OR op.navio LIKE ${`%${filters.search}%`}
-        OR op.responsavel LIKE ${`%${filters.search}%`}
+        OR op.blVersion LIKE ${`%${filters.search}%`}
       )`
     : Prisma.empty;
 
@@ -69,12 +73,19 @@ function buildFilterSql(filters: DashboardFilters) {
 }
 
 export class DashboardRepository {
+  /**
+   * Uma linha por (tipo, número do BL).
+   * DRAFT órfão é recriado como finalizado quando o FINAL existe — sem o rank
+   * o mesmo BL aparece duas vezes em Processos Finalizados.
+   */
   private readonly operationalCte = Prisma.sql`
     WITH operational AS (
       SELECT
         CAST('Master' AS VARCHAR(10)) AS tipo,
         m.Id AS blId,
         m.MasterNumber AS numeroBl,
+        m.MasterNumber AS masterNumber,
+        m.BlVersion AS blVersion,
         COALESCE(m.VesselName, '-') AS navio,
         COALESCE(m.Voyage, '-') AS viagem,
         COALESCE(m.LoadingPortName, m.LoadingPortCode, '-') AS origem,
@@ -89,7 +100,12 @@ export class DashboardRepository {
         w.Confianca AS confianca,
         COALESCE(w.UpdatedAt, m.OnboardDate, SYSUTCDATETIME()) AS dataHora
       FROM BL_Master m
-      LEFT JOIN BL_Workflow w ON w.BlMasterId = m.Id
+      OUTER APPLY (
+        SELECT TOP 1 wf.Status, wf.Pendencia, wf.ResponsavelUserId, wf.Confianca, wf.UpdatedAt
+        FROM BL_Workflow wf
+        WHERE wf.BlMasterId = m.Id
+        ORDER BY wf.UpdatedAt DESC
+      ) w
       LEFT JOIN APP_User u ON u.Id = w.ResponsavelUserId
 
       UNION ALL
@@ -98,6 +114,8 @@ export class DashboardRepository {
         CAST('House' AS VARCHAR(10)) AS tipo,
         h.Id AS blId,
         h.HouseNumber AS numeroBl,
+        m2.MasterNumber AS masterNumber,
+        h.BlVersion AS blVersion,
         COALESCE(m2.VesselName, '-') AS navio,
         COALESCE(m2.Voyage, '-') AS viagem,
         COALESCE(h.LoadingPortName, h.LoadingPortCode, '-') AS origem,
@@ -113,8 +131,25 @@ export class DashboardRepository {
         COALESCE(w.UpdatedAt, h.IssueDate, SYSUTCDATETIME()) AS dataHora
       FROM BL_House h
       LEFT JOIN BL_Master m2 ON m2.Id = h.BLMasterId
-      LEFT JOIN BL_Workflow w ON w.BlHouseId = h.Id
+      OUTER APPLY (
+        SELECT TOP 1 wf.Status, wf.Pendencia, wf.ResponsavelUserId, wf.Confianca, wf.UpdatedAt
+        FROM BL_Workflow wf
+        WHERE wf.BlHouseId = h.Id
+        ORDER BY wf.UpdatedAt DESC
+      ) w
       LEFT JOIN APP_User u ON u.Id = w.ResponsavelUserId
+    ),
+    ranked AS (
+      SELECT
+        op.*,
+        ROW_NUMBER() OVER (
+          PARTITION BY op.tipo, op.numeroBl
+          ORDER BY
+            CASE WHEN LTRIM(RTRIM(UPPER(op.blVersion))) = 'FINAL' THEN 0 ELSE 1 END,
+            op.dataHora DESC,
+            op.blId DESC
+        ) AS rn
+      FROM operational op
     )
   `;
 
@@ -132,6 +167,8 @@ export class DashboardRepository {
           op.tipo,
           op.blId,
           op.numeroBl,
+          op.masterNumber,
+          op.blVersion,
           op.navio,
           op.viagem,
           op.origem,
@@ -141,8 +178,8 @@ export class DashboardRepository {
           op.responsavel,
           op.confianca,
           op.dataHora
-        FROM operational op
-        WHERE 1 = 1
+        FROM ranked op
+        WHERE op.rn = 1
         ${statusFilter}
         ${tipoFilter}
         ${searchFilter}
@@ -152,8 +189,8 @@ export class DashboardRepository {
       prisma.$queryRaw<{ total: number }[]>`
         ${this.operationalCte}
         SELECT COUNT(*) AS total
-        FROM operational op
-        WHERE 1 = 1
+        FROM ranked op
+        WHERE op.rn = 1
         ${statusFilter}
         ${tipoFilter}
         ${searchFilter}
@@ -179,7 +216,8 @@ export class DashboardRepository {
               AND CAST(op.dataHora AS DATE) = CAST(SYSUTCDATETIME() AS DATE)
             THEN 1 ELSE 0
           END) AS processadosHoje
-        FROM operational op
+        FROM ranked op
+        WHERE op.rn = 1
       `,
       prisma.$queryRaw<{ tempoMedioMinutos: number | null }[]>`
         SELECT

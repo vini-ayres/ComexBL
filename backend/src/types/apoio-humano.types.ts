@@ -21,7 +21,10 @@ export interface HistoricoAlteracaoDto {
 export interface ApoioHumanoDocumentoDto {
   nome: string;
   paginas: number;
+  /** Caminho lógico para exibição, ex.: files/MBL-123.pdf */
   origemPath: string;
+  /** Nome do arquivo em /files (null se ainda não associado) */
+  fileName: string | null;
 }
 
 export interface ApoioHumanoItemDto {
@@ -30,6 +33,7 @@ export interface ApoioHumanoItemDto {
   numeroBl: string;
   navio: string;
   viagem: string;
+  blVersion: string;
 }
 
 export interface ApoioHumanoDetailDto {

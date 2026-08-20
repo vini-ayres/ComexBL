@@ -2,7 +2,7 @@
 // Tipos centrais do domínio Comex / BL
 // ============================================================
 
-export type BLStatus = "divergencia" | "apoio_humano" | "processando" | "finalizado" | "nao_encontrado"
+export type BLStatus = "divergencia" | "apoio_humano" | "conferencia_house_master" | "processando" | "finalizado" | "nao_encontrado"
 
 export type BLTipo = "Master" | "House"
 
@@ -29,7 +29,7 @@ export interface KPI {
 }
 
 // ------------------------------------------------------------
-// BL Master / House (banco local)
+// Histórico de XML (lote Master/House)
 // ------------------------------------------------------------
 
 export interface Container {
@@ -57,7 +57,7 @@ export interface BLMaster {
   containers: Container[]
   houses: string[] // ids de BLHouse
   status: BLStatus
-  origemArquivo: string // OneDrive path
+  origemArquivo: string // files/{FileName}
 }
 
 export interface BLHouse {
@@ -148,7 +148,7 @@ export interface BLNaoEncontrado {
 // Administração / RBAC / LDAP / Auditoria
 // ------------------------------------------------------------
 
-export type PerfilUsuario = "Administrador" | "Supervisor" | "Operador" | "Auditor"
+export type PerfilUsuario = "Administrador" | "Supervisor" | "Operador"
 
 export interface Usuario {
   id: string

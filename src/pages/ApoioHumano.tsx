@@ -1,31 +1,181 @@
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import {
-  Check, Pencil, History, Save, CheckCircle2, AlertCircle,
-  UserCog, X, ChevronLeft, ChevronRight, Loader2,
+  Check, Pencil, Save, CheckCircle2, AlertCircle,
+  UserCog, X, ChevronLeft, ChevronRight, Loader2, Boxes, Hash,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
-import { Progress } from "@/components/ui/progress"
 import { DocumentViewer } from "@/components/shared/DocumentViewer"
+import { OperationalEmptyQueueCard } from "@/components/shared/OperationalEmptyQueueCard"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { fetchApoioHumano, saveApoioHumanoCampos } from "@/lib/api/apoio-humano"
-import type { ApoioHumanoDetailDto, CampoExtraidoDto, HistoricoAlteracaoDto } from "@/lib/api/types"
+import type { ApoioHumanoDetailDto, CampoExtraidoDto } from "@/lib/api/types"
 import { ApiError } from "@/lib/api/client"
-import { formatDateTime, cn } from "@/lib/utils"
+import { cn } from "@/lib/utils"
+import { groupCargoCampos, resolveCargoFieldLabel } from "@/lib/apoio-humano/cargo-display"
 import { toast } from "sonner"
 
-function confiancaColor(c: number) {
-  if (c >= 80) return "text-success-600 bg-success-50"
-  if (c >= 60) return "text-warning-600 bg-warning-50"
-  return "text-danger-600 bg-danger-50"
+type CampoCategoria = "scalar" | "cargo" | "ncm"
+
+function resolveCampoCategoria(campoId: string): CampoCategoria {
+  if (campoId.startsWith("cargo.")) return "cargo"
+  if (campoId.startsWith("ncm.")) return "ncm"
+  return "scalar"
+}
+
+function filterCamposPorCategoria(campos: CampoExtraidoDto[], categoria: CampoCategoria) {
+  return campos.filter((campo) => resolveCampoCategoria(campo.id) === categoria)
+}
+
+interface CamposTableProps {
+  campos: CampoExtraidoDto[]
+  editingId: string | null
+  draftValue: string
+  onDraftChange: (value: string) => void
+  onStartEdit: (campo: CampoExtraidoDto) => void
+  onSaveEdit: (id: string) => void
+  onCancelEdit: () => void
+  onConfirmField: (id: string) => void
+  emptyMessage?: string
+}
+
+function CamposTable({
+  campos,
+  editingId,
+  draftValue,
+  onDraftChange,
+  onStartEdit,
+  onSaveEdit,
+  onCancelEdit,
+  onConfirmField,
+  emptyMessage = "Nenhum campo nesta seção.",
+}: CamposTableProps) {
+  if (campos.length === 0) {
+    return (
+      <p className="text-sm text-muted-foreground py-6 text-center">{emptyMessage}</p>
+    )
+  }
+
+  return (
+    <div className="rounded-lg border border-border overflow-hidden">
+      <table className="w-full text-sm">
+        <thead className="bg-primary-50/60 border-b border-border">
+          <tr>
+            <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-primary-700">Campo</th>
+            <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-primary-700">Valor</th>
+            <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-primary-700 w-24">Status</th>
+            <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-primary-700 w-20">Ações</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-border">
+          {campos.map((campo) => (
+            <tr key={campo.id} className={cn("hover:bg-primary-50/30", campo.status === "pendente" && "bg-warning-50/40")}>
+              <td className="px-3 py-2.5 font-medium text-primary-900 whitespace-nowrap">{campo.campo}</td>
+              <td className="px-3 py-2.5">
+                {editingId === campo.id ? (
+                  <Input
+                    value={draftValue}
+                    onChange={(e) => onDraftChange(e.target.value)}
+                    className="h-8 text-sm"
+                    autoFocus
+                  />
+                ) : (
+                  <div className="flex flex-col">
+                    <span className={cn(campo.status === "editado" && "line-through text-muted-foreground text-xs")}>
+                      {campo.valorRecebido}
+                    </span>
+                    {campo.valorManual && (
+                      <span className="text-primary-900 font-medium">{campo.valorManual}</span>
+                    )}
+                  </div>
+                )}
+              </td>
+              <td className="px-3 py-2.5">
+                {campo.status === "confirmado" && <Badge variant="success" className="text-[10px]"><CheckCircle2 className="h-3 w-3" />OK</Badge>}
+                {campo.status === "editado" && <Badge variant="info" className="text-[10px]"><Pencil className="h-3 w-3" />Editado</Badge>}
+                {campo.status === "pendente" && <Badge variant="warning" className="text-[10px]"><AlertCircle className="h-3 w-3" />Pendente</Badge>}
+              </td>
+              <td className="px-3 py-2.5">
+                <div className="flex items-center justify-end gap-1">
+                  {editingId === campo.id ? (
+                    <>
+                      <Button variant="ghost" size="icon" className="h-7 w-7 text-success-600" onClick={() => onSaveEdit(campo.id)}>
+                        <Check className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground" onClick={onCancelEdit}>
+                        <X className="h-3.5 w-3.5" />
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onStartEdit(campo)}>
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                      {campo.status === "pendente" && (
+                        <Button variant="ghost" size="icon" className="h-7 w-7 text-success-600" onClick={() => onConfirmField(campo.id)}>
+                          <Check className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
+                    </>
+                  )}
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function CargoCamposTable({
+  campos,
+  editingId,
+  draftValue,
+  onDraftChange,
+  onStartEdit,
+  onSaveEdit,
+  onCancelEdit,
+  onConfirmField,
+  emptyMessage = "Nenhum cargo vinculado a este House.",
+}: CamposTableProps) {
+  const groups = useMemo(() => groupCargoCampos(campos), [campos])
+
+  if (campos.length === 0) {
+    return (
+      <p className="text-sm text-muted-foreground py-6 text-center">{emptyMessage}</p>
+    )
+  }
+
+  return (
+    <div className="space-y-5">
+      {groups.map((group) => (
+        <div key={group.key} className="space-y-2">
+          <h4 className="text-sm font-semibold text-primary-900">{group.label}</h4>
+          <CamposTable
+            campos={group.campos.map((campo) => ({
+              ...campo,
+              campo: resolveCargoFieldLabel(campo),
+            }))}
+            editingId={editingId}
+            draftValue={draftValue}
+            onDraftChange={onDraftChange}
+            onStartEdit={onStartEdit}
+            onSaveEdit={onSaveEdit}
+            onCancelEdit={onCancelEdit}
+            onConfirmField={onConfirmField}
+          />
+        </div>
+      ))}
+    </div>
+  )
 }
 
 export default function ApoioHumano() {
   const [data, setData] = useState<ApoioHumanoDetailDto | null>(null)
   const [campos, setCampos] = useState<CampoExtraidoDto[]>([])
-  const [historico, setHistorico] = useState<HistoricoAlteracaoDto[]>([])
   const [page, setPage] = useState(1)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -42,7 +192,6 @@ export default function ApoioHumano() {
       const result = await fetchApoioHumano(targetPage)
       setData(result)
       setCampos(result.campos)
-      setHistorico(result.historico)
       setPage(result.pagination.page)
     } catch (err) {
       const message = err instanceof ApiError
@@ -63,10 +212,35 @@ export default function ApoioHumano() {
   const pendentesCount = campos.filter((c) => c.status === "pendente").length
   const totalPages = data?.pagination.totalPages ?? 1
   const totalItems = data?.pagination.total ?? 0
+  const isHouseDocument = data?.item.tipo === "House"
+
+  const scalarCampos = useMemo(
+    () => filterCamposPorCategoria(campos, "scalar"),
+    [campos],
+  )
+  const cargoCampos = useMemo(
+    () => filterCamposPorCategoria(campos, "cargo"),
+    [campos],
+  )
+  const ncmCampos = useMemo(
+    () => filterCamposPorCategoria(campos, "ncm"),
+    [campos],
+  )
+
+  const camposTableProps = {
+    editingId,
+    draftValue,
+    onDraftChange: setDraftValue,
+    onStartEdit: startEdit,
+    onSaveEdit: saveEdit,
+    onCancelEdit: () => setEditingId(null),
+    onConfirmField: confirmField,
+  }
 
   function startEdit(campo: CampoExtraidoDto) {
     setEditingId(campo.id)
-    setDraftValue(campo.valorManual ?? campo.valorRecebido)
+    const current = campo.valorManual ?? campo.valorRecebido
+    setDraftValue(current === "-" ? "" : current)
   }
 
   function saveEdit(id: string) {
@@ -102,10 +276,6 @@ export default function ApoioHumano() {
           status: campo.status,
         })),
       })
-
-      if (result.historico.length > 0) {
-        setHistorico((prev) => [...result.historico, ...prev])
-      }
 
       if (result.completed) {
         toast.success("Revisão concluída. Carregando próximo BL da fila...")
@@ -149,23 +319,22 @@ export default function ApoioHumano() {
 
   if (error && !data) {
     const isEmptyQueue = error.includes("Nenhum BL pendente")
+    if (isEmptyQueue) {
+      return (
+        <OperationalEmptyQueueCard
+          title="Nenhum BL pendente de apoio humano"
+          description="Todos os documentos foram validados ou não possuem campos pendentes."
+        />
+      )
+    }
+
     return (
       <div className="rounded-xl border border-border bg-white px-4 py-12 text-center">
-        {isEmptyQueue ? (
-          <>
-            <CheckCircle2 className="h-10 w-10 text-success-600 mx-auto mb-3" />
-            <p className="text-sm font-medium text-primary-900">Nenhum BL pendente de apoio humano</p>
-            <p className="text-xs text-muted-foreground mt-1">Todos os documentos foram validados ou não possuem campos pendentes.</p>
-          </>
-        ) : (
-          <>
-            <AlertCircle className="h-8 w-8 text-danger-600 mx-auto mb-3" />
-            <p className="text-sm text-danger-700">{error}</p>
-            <Button variant="outline" size="sm" className="mt-4" onClick={() => void loadBl(page)}>
-              Tentar novamente
-            </Button>
-          </>
-        )}
+        <AlertCircle className="h-8 w-8 text-danger-600 mx-auto mb-3" />
+        <p className="text-sm text-danger-700">{error}</p>
+        <Button variant="outline" size="sm" className="mt-4" onClick={() => void loadBl(page)}>
+          Tentar novamente
+        </Button>
       </div>
     )
   }
@@ -186,7 +355,7 @@ export default function ApoioHumano() {
           <div>
             <h2 className="text-lg font-bold text-primary-900">{tituloNavio}</h2>
             <p className="text-xs text-muted-foreground">
-              {data.item.tipo} · Correção manual — {pendentesCount} campo(s) com baixa confiança
+              {data.item.tipo} · Correção manual — {pendentesCount} campo(s) nulo(s)
             </p>
           </div>
         </div>
@@ -219,6 +388,8 @@ export default function ApoioHumano() {
           nome={data.documento.nome}
           paginas={data.documento.paginas}
           origemPath={data.documento.origemPath}
+          fileName={data.documento.fileName}
+          blVersion={data.item.blVersion}
           className="xl:sticky xl:top-20 h-fit"
         />
 
@@ -237,117 +408,45 @@ export default function ApoioHumano() {
             )}
 
             {!loading && (
-              <Tabs defaultValue="campos">
-                <TabsList>
-                  <TabsTrigger value="campos">Campos</TabsTrigger>
-                  <TabsTrigger value="historico">Histórico de Alterações</TabsTrigger>
-                </TabsList>
-
-                <TabsContent value="campos">
-                  <div className="rounded-lg border border-border overflow-hidden">
-                    <table className="w-full text-sm">
-                      <thead className="bg-primary-50/60 border-b border-border">
-                        <tr>
-                          <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-primary-700">Campo</th>
-                          <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-primary-700">Valor</th>
-                          <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-primary-700 w-28">Confiança</th>
-                          <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-primary-700 w-24">Status</th>
-                          <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-primary-700 w-20">Ações</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-border">
-                        {campos.map((campo) => (
-                          <tr key={campo.id} className={cn("hover:bg-primary-50/30", campo.status === "pendente" && "bg-warning-50/40")}>
-                            <td className="px-3 py-2.5 font-medium text-primary-900 whitespace-nowrap">{campo.campo}</td>
-                            <td className="px-3 py-2.5">
-                              {editingId === campo.id ? (
-                                <Input
-                                  value={draftValue}
-                                  onChange={(e) => setDraftValue(e.target.value)}
-                                  className="h-8 text-sm"
-                                  autoFocus
-                                />
-                              ) : (
-                                <div className="flex flex-col">
-                                  <span className={cn(campo.status === "editado" && "line-through text-muted-foreground text-xs")}>
-                                    {campo.valorRecebido}
-                                  </span>
-                                  {campo.valorManual && (
-                                    <span className="text-primary-900 font-medium">{campo.valorManual}</span>
-                                  )}
-                                </div>
-                              )}
-                            </td>
-                            <td className="px-3 py-2.5">
-                              <div className="flex items-center gap-2">
-                                <span className={cn("text-xs font-bold px-1.5 py-0.5 rounded", confiancaColor(campo.confianca))}>
-                                  {campo.confianca}%
-                                </span>
-                              </div>
-                              <Progress value={campo.confianca} className="h-1 mt-1 w-16" />
-                            </td>
-                            <td className="px-3 py-2.5">
-                              {campo.status === "confirmado" && <Badge variant="success" className="text-[10px]"><CheckCircle2 className="h-3 w-3" />OK</Badge>}
-                              {campo.status === "editado" && <Badge variant="info" className="text-[10px]"><Pencil className="h-3 w-3" />Editado</Badge>}
-                              {campo.status === "pendente" && <Badge variant="warning" className="text-[10px]"><AlertCircle className="h-3 w-3" />Pendente</Badge>}
-                            </td>
-                            <td className="px-3 py-2.5">
-                              <div className="flex items-center justify-end gap-1">
-                                {editingId === campo.id ? (
-                                  <>
-                                    <Button variant="ghost" size="icon" className="h-7 w-7 text-success-600" onClick={() => saveEdit(campo.id)}>
-                                      <Check className="h-3.5 w-3.5" />
-                                    </Button>
-                                    <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground" onClick={() => setEditingId(null)}>
-                                      <X className="h-3.5 w-3.5" />
-                                    </Button>
-                                  </>
-                                ) : (
-                                  <>
-                                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => startEdit(campo)}>
-                                      <Pencil className="h-3.5 w-3.5" />
-                                    </Button>
-                                    {campo.status === "pendente" && (
-                                      <Button variant="ghost" size="icon" className="h-7 w-7 text-success-600" onClick={() => confirmField(campo.id)}>
-                                        <Check className="h-3.5 w-3.5" />
-                                      </Button>
-                                    )}
-                                  </>
-                                )}
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </TabsContent>
-
-                <TabsContent value="historico">
-                  <div className="space-y-3">
-                    {historico.length === 0 && (
-                      <p className="text-sm text-muted-foreground py-6 text-center">Nenhuma alteração registrada para este BL.</p>
-                    )}
-                    {historico.map((h) => (
-                      <div key={h.id} className="flex items-start gap-3 rounded-lg border border-border p-3">
-                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary-50 text-primary-600">
-                          <History className="h-4 w-4" />
-                        </div>
-                        <div className="flex-1 text-sm">
-                          <p>
-                            <span className="font-semibold text-primary-900">{h.usuario}</span>{" "}
-                            alterou <span className="font-medium">{h.campo}</span>
-                          </p>
-                          <p className="text-xs text-muted-foreground mt-0.5">
-                            <span className="line-through">{h.valorAntes}</span> → <span className="text-primary-800 font-medium">{h.valorDepois}</span>
-                          </p>
-                          <p className="text-[11px] text-muted-foreground mt-1">{formatDateTime(h.dataHora)}</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </TabsContent>
-              </Tabs>
+              isHouseDocument ? (
+                <Tabs defaultValue="scalar">
+                  <TabsList>
+                    <TabsTrigger value="scalar">Campos ({scalarCampos.length})</TabsTrigger>
+                    <TabsTrigger value="cargo">
+                      <Boxes className="h-3.5 w-3.5 mr-1" /> Cargo ({cargoCampos.length})
+                    </TabsTrigger>
+                    <TabsTrigger value="ncm">
+                      <Hash className="h-3.5 w-3.5 mr-1" /> NCM ({ncmCampos.length})
+                    </TabsTrigger>
+                  </TabsList>
+                  <TabsContent value="scalar">
+                    <CamposTable
+                      campos={scalarCampos}
+                      {...camposTableProps}
+                      emptyMessage="Nenhum campo escalar para validar."
+                    />
+                  </TabsContent>
+                  <TabsContent value="cargo">
+                    <CargoCamposTable
+                      campos={cargoCampos}
+                      {...camposTableProps}
+                    />
+                  </TabsContent>
+                  <TabsContent value="ncm">
+                    <CamposTable
+                      campos={ncmCampos}
+                      {...camposTableProps}
+                      emptyMessage="Nenhum NCM vinculado a este House."
+                    />
+                  </TabsContent>
+                </Tabs>
+              ) : (
+                <CamposTable
+                  campos={campos}
+                  {...camposTableProps}
+                  emptyMessage="Nenhum campo para validar."
+                />
+              )
             )}
           </CardContent>
         </Card>

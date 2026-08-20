@@ -9,6 +9,7 @@ import type {
 const DEFAULT_PENDENCIA: Record<BlStatus, string> = {
   divergencia: 'Divergência pendente de revisão',
   apoio_humano: 'Aguardando revisão humana',
+  conferencia_house_master: 'Aguardando conferência House × Master',
   processando: 'Aguardando processamento',
   finalizado: 'Nenhuma pendência',
   nao_encontrado: 'BL não localizado no GlobalSys',
@@ -32,12 +33,17 @@ export function mapDashboardListItem(
     tipo: row.tipo,
     status: row.status,
     pendencia: resolvePendencia(row.status, row.pendencia),
+    blVersion: row.blVersion?.trim() || '-',
     responsavel: row.responsavel,
     dataHora: row.dataHora.toISOString(),
   };
 
   if (row.navio && row.navio !== '-') {
     item.navio = row.navio;
+  }
+
+  if (row.tipo === 'House' && row.masterNumber?.trim()) {
+    item.masterNumber = row.masterNumber.trim();
   }
 
   if (row.viagem && row.viagem !== '-') {

@@ -6,6 +6,7 @@ import { parsePaginationQuery } from './pagination.js';
 const VALID_STATUSES: BlStatus[] = [
   'divergencia',
   'apoio_humano',
+  'conferencia_house_master',
   'processando',
   'finalizado',
   'nao_encontrado',

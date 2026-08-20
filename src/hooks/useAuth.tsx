@@ -1,83 +1,161 @@
 import * as React from "react"
 import type { PerfilUsuario } from "@/types"
+import {
+  fetchCurrentUser,
+  hasAnyPermission,
+  hasPermission,
+  loginWithActiveDirectory,
+  logoutFromApi,
+  type AuthUserResponse,
+} from "@/lib/api/auth"
+import { setAuthToken, getAuthToken, setUnauthorizedHandler } from "@/lib/api/client"
+import { ApiError } from "@/lib/api/client"
 
-interface AuthUser {
+export interface AuthUser {
+  id: number
   nome: string
   login: string
   email: string
   perfil: PerfilUsuario
   grupoAD: string
+  permissoes: string[]
 }
 
 interface AuthContextValue {
   user: AuthUser | null
   isAuthenticated: boolean
+  isLoading: boolean
   loginWithLdap: (login: string, password: string) => Promise<{ ok: boolean; error?: string }>
-  logout: () => void
+  logout: () => Promise<void>
+  hasPermission: (permission: string) => boolean
+  hasAnyPermission: (permissions: string[]) => boolean
+  refreshUser: () => Promise<void>
 }
 
 const AuthContext = React.createContext<AuthContextValue | undefined>(undefined)
 
 const STORAGE_KEY = "comexbl_auth_user"
 
-// Usuário de teste fixo para acesso ao protótipo (simula um registro
-// já sincronizado via grupo do Active Directory: GG_COMEX_ADMIN).
-// A validação real de credenciais ocorre no backend contra o LDAP/AD.
-export const TEST_USER_CREDENTIALS = {
-  login: "teste",
-  password: "teste123",
+function mapAuthUser(data: AuthUserResponse): AuthUser {
+  return {
+    id: data.id,
+    nome: data.nome,
+    login: data.login,
+    email: data.email,
+    perfil: data.perfil,
+    grupoAD: data.grupoAD,
+    permissoes: data.permissoes,
+  }
 }
 
-const TEST_USER: AuthUser = {
-  nome: "Usuário de Teste",
-  login: TEST_USER_CREDENTIALS.login,
-  email: "teste@empresa.com.br",
-  perfil: "Administrador",
-  grupoAD: "GG_COMEX_ADMIN",
+function readStoredUser(): AuthUser | null {
+  try {
+    if (!getAuthToken()) {
+      localStorage.removeItem(STORAGE_KEY)
+      return null
+    }
+
+    const raw = localStorage.getItem(STORAGE_KEY)
+    return raw ? (JSON.parse(raw) as AuthUser) : null
+  } catch {
+    return null
+  }
+}
+
+function clearStoredSession(): void {
+  setAuthToken(null)
+  localStorage.removeItem(STORAGE_KEY)
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = React.useState<AuthUser | null>(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY)
-      return raw ? JSON.parse(raw) : null
-    } catch {
-      return null
+  const [user, setUser] = React.useState<AuthUser | null>(() => readStoredUser())
+  const [isLoading, setIsLoading] = React.useState(true)
+
+  const persistUser = React.useCallback((nextUser: AuthUser | null) => {
+    if (nextUser && getAuthToken()) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(nextUser))
+    } else {
+      localStorage.removeItem(STORAGE_KEY)
     }
-  })
+    setUser(nextUser)
+  }, [])
+
+  const logout = React.useCallback(async () => {
+    try {
+      await logoutFromApi()
+    } finally {
+      clearStoredSession()
+      setUser(null)
+    }
+  }, [])
+
+  const refreshUser = React.useCallback(async () => {
+    if (!getAuthToken()) {
+      clearStoredSession()
+      setUser(null)
+      return
+    }
+
+    try {
+      const current = await fetchCurrentUser()
+      persistUser(mapAuthUser(current))
+    } catch {
+      clearStoredSession()
+      setUser(null)
+    }
+  }, [persistUser])
+
+  React.useEffect(() => {
+    setUnauthorizedHandler(() => {
+      clearStoredSession()
+      setUser(null)
+    })
+
+    return () => setUnauthorizedHandler(null)
+  }, [])
+
+  React.useEffect(() => {
+    void (async () => {
+      try {
+        if (getAuthToken()) {
+          await refreshUser()
+        } else {
+          clearStoredSession()
+          setUser(null)
+        }
+      } finally {
+        setIsLoading(false)
+      }
+    })()
+  }, [refreshUser])
 
   const loginWithLdap = React.useCallback(async (login: string, password: string) => {
-    // Simulação de autenticação LDAP — a integração real ocorre no backend
-    // que consulta o Active Directory e sincroniza o usuário e grupos.
-    await new Promise((r) => setTimeout(r, 900))
-
     if (!login || !password) {
       return { ok: false, error: "Informe usuário e senha de rede." }
     }
 
-    const isTestUser =
-      login.trim().toLowerCase() === TEST_USER_CREDENTIALS.login &&
-      password === TEST_USER_CREDENTIALS.password
-
-    if (!isTestUser) {
-      return { ok: false, error: "Credenciais inválidas no Active Directory. Use o usuário de teste disponibilizado." }
+    try {
+      const result = await loginWithActiveDirectory(login, password)
+      persistUser(mapAuthUser(result.user))
+      return { ok: true }
+    } catch (error) {
+      const message =
+        error instanceof ApiError
+          ? error.message
+          : "Erro ao autenticar no Active Directory."
+      return { ok: false, error: message }
     }
-
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(TEST_USER))
-    setUser(TEST_USER)
-    return { ok: true }
-  }, [])
-
-  const logout = React.useCallback(() => {
-    localStorage.removeItem(STORAGE_KEY)
-    setUser(null)
-  }, [])
+  }, [persistUser])
 
   const value: AuthContextValue = {
     user,
-    isAuthenticated: !!user,
+    isAuthenticated: Boolean(user && getAuthToken()),
+    isLoading,
     loginWithLdap,
     logout,
+    hasPermission: (permission) => hasPermission(user, permission),
+    hasAnyPermission: (permissions) => hasAnyPermission(user, permissions),
+    refreshUser,
   }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

@@ -1,0 +1,17 @@
+-- Obsoleto: não use este script com a cadeia de migrations restaurada.
+--
+-- Histórico:
+--   Foi criado para apagar registros das 3 migrations antigas antes de aplicar
+--   a migration squash 20260717183000_init (estratégia descartada).
+--
+-- Cadeia correta atual:
+--   20260708185924_comex_bl
+--   20260708194500_remove_legacy_tables_and_add_app_tables
+--   20260715120000_consolidate_app_persistence
+--   20260720120000_sprint1_bl_version_cargo_ncm
+--   20260720120001_sprint1_bl_indexes_cargo_ncm
+--   20260805100000_bl_workflow_filtered_unique_indexes
+--
+-- Se uma migration falhar, use:
+--   npx prisma migrate resolve --rolled-back "<migration_name>"
+--   npm run prisma:deploy
