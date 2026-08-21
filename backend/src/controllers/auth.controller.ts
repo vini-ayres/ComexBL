@@ -19,6 +19,7 @@ export class AuthController {
 
   me = async (req: Request, res: Response): Promise<void> => {
     const user = req.authUser!;
+    const token = authService.signToken(user.id, user.login);
 
     res.json({
       id: user.id,
@@ -29,6 +30,7 @@ export class AuthController {
       grupoAD: user.primaryAdGroup ?? '—',
       permissoes: user.permissions,
       roles: user.roles,
+      token,
     });
   };
 

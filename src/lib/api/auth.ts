@@ -10,6 +10,7 @@ export interface AuthUserResponse {
   grupoAD: string
   permissoes: string[]
   roles?: string[]
+  token?: string
 }
 
 export interface LoginResponse {
@@ -24,7 +25,13 @@ export async function loginWithActiveDirectory(login: string, password: string):
 }
 
 export async function fetchCurrentUser(): Promise<AuthUserResponse> {
-  return apiGet<AuthUserResponse>('/auth/me')
+  const result = await apiGet<AuthUserResponse>('/auth/me')
+
+  if (result.token) {
+    setAuthToken(result.token)
+  }
+
+  return result
 }
 
 export async function logoutFromApi(): Promise<void> {

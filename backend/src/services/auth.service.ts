@@ -14,6 +14,19 @@ import { ldapService } from './ldap.service.js';
 import { rbacService } from './rbac.service.js';
 import { userSyncService } from './user-sync.service.js';
 
+function parseJwtSubject(sub: unknown): number | null {
+  if (typeof sub === 'number' && Number.isInteger(sub) && sub > 0) {
+    return sub;
+  }
+
+  if (typeof sub === 'string' && /^\d+$/.test(sub)) {
+    const parsed = Number(sub);
+    return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+  }
+
+  return null;
+}
+
 export class AuthService {
   signToken(userId: number, login: string): string {
     const options: SignOptions = {
@@ -27,12 +40,18 @@ export class AuthService {
     try {
       const decoded = jwt.verify(token, env.jwt.secret);
 
-      if (typeof decoded === 'string' || typeof decoded.sub !== 'number') {
+      if (typeof decoded === 'string') {
+        throw new UnauthorizedError('Sessão inválida ou expirada.');
+      }
+
+      const sub = parseJwtSubject(decoded.sub);
+
+      if (sub === null) {
         throw new UnauthorizedError('Sessão inválida ou expirada.');
       }
 
       return {
-        sub: decoded.sub,
+        sub,
         login: String(decoded.login ?? ''),
       };
     } catch (error) {
