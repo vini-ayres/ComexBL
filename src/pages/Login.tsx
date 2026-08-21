@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { useNavigate } from "react-router-dom"
+import { Navigate, useNavigate } from "react-router-dom"
 import { Ship, Lock, User, ShieldCheck, Loader2, Network } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -13,8 +13,20 @@ export default function Login() {
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
-  const { loginWithLdap } = useAuth()
+  const { loginWithLdap, isAuthenticated, isLoading: isSessionLoading } = useAuth()
   const navigate = useNavigate()
+
+  if (isSessionLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-primary-950 text-sm text-primary-200">
+        Carregando sessão...
+      </div>
+    )
+  }
+
+  if (isAuthenticated) {
+    return <Navigate to="/" replace />
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()

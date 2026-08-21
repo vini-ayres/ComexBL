@@ -167,7 +167,7 @@ const ldapUrl =
     : undefined);
 
 const jwtSecret = optionalEnv('JWT_SECRET') ?? 'dev-insecure-jwt-secret-change-me';
-const jwtExpiresIn = optionalEnv('JWT_EXPIRES_IN') ?? '8h';
+const jwtExpiresIn = optionalEnv('JWT_EXPIRES_IN') ?? '7d';
 
 export const env = {
   nodeEnv: process.env.NODE_ENV ?? 'development',

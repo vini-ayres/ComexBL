@@ -99,9 +99,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const current = await fetchCurrentUser()
       persistUser(mapAuthUser(current))
-    } catch {
-      clearStoredSession()
-      setUser(null)
+    } catch (error) {
+      if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+        clearStoredSession()
+        setUser(null)
+      }
     }
   }, [persistUser])
 
