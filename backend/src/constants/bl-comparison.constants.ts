@@ -12,7 +12,11 @@ export const MASTER_SCALAR_FIELDS = [
   { key: 'Voyage', label: 'Voyage' },
   { key: 'CarrierSCACCode', label: 'Carrier SCAC Code' },
   { key: 'CarrierName', label: 'Carrier Name' },
+  { key: 'ShipperName', label: 'Shipper Name' },
+  { key: 'ServiceTerm', label: 'Service Term' },
   { key: 'FreightTerm', label: 'Freight Term' },
+  { key: 'LoadingPortName', label: 'Loading Port Name' },
+  { key: 'DischargePortName', label: 'Discharge Port Name' },
   { key: 'ContainerNumber', label: 'Container Number' },
   { key: 'ContainerSealNo1', label: 'Container Seal No 1' },
   { key: 'ContainerType', label: 'Container Type' },
@@ -22,9 +26,14 @@ export const MASTER_SCALAR_FIELDS = [
   { key: 'VolumeMeasure', label: 'Volume Measure' },
 ] as const;
 
-/** Master no Apoio Humano: Packing Quantity Unit Code não entra na validação. */
+/** Master no Apoio Humano: estes campos não entram na validação nem na tela. */
+const APOIO_HUMANO_MASTER_EXCLUDED_KEYS = new Set([
+  'PackingQuantityUnitCode',
+  'CarrierSCACCode',
+]);
+
 export const APOIO_HUMANO_MASTER_SCALAR_FIELDS = MASTER_SCALAR_FIELDS.filter(
-  (field) => field.key !== 'PackingQuantityUnitCode',
+  (field) => !APOIO_HUMANO_MASTER_EXCLUDED_KEYS.has(field.key),
 );
 
 /**
@@ -36,7 +45,9 @@ export const HOUSE_SCALAR_FIELDS = [
   { key: 'ShipperName', label: 'Shipper Name' },
   { key: 'ConsigneeName', label: 'Consignee Name' },
   { key: 'NotifyName', label: 'Notify Name' },
-  { key: 'DeliveryPortName', label: 'Delivery Port Name' },
+  { key: 'ServiceTerm', label: 'Service Term' },
+  { key: 'LoadingPortName', label: 'Loading Port Name' },
+  { key: 'DischargePortName', label: 'Discharge Port Name' },
   { key: 'ContainerNumber', label: 'Container Number' },
   { key: 'PackingQuantity', label: 'Packing Quantity' },
   { key: 'GrossWeight', label: 'Gross Weight' },
@@ -88,8 +99,14 @@ const MASTER_LEAF_KEYS = new Set(
 /**
  * Abas da tela de divergência só exibem master/house/cargo/ncm.
  * O motor canônico ainda emite general/container/party/port — inferimos a aba pelo path.
+ *
+ * Campos como `serviceTerm`, `loadingPortName`, `dischargePortName` e `shipperName`
+ * existem em Master e House. Sem prefixo `house.`, a aba depende do documento comparado.
  */
-export function resolveDivergenciaCampoCategoria(campoKey: string): DivergenciaCampoCategoria {
+export function resolveDivergenciaCampoCategoria(
+  campoKey: string,
+  documentType?: 'Master' | 'House',
+): DivergenciaCampoCategoria {
   if (campoKey.startsWith('house.') || campoKey.includes('.house.')) {
     return 'house';
   }
@@ -103,12 +120,18 @@ export function resolveDivergenciaCampoCategoria(campoKey: string): DivergenciaC
   }
 
   const leaf = campoKey.split('.').pop() ?? campoKey;
+  const inHouse = HOUSE_LEAF_KEYS.has(leaf);
+  const inMaster = MASTER_LEAF_KEYS.has(leaf);
 
-  if (HOUSE_LEAF_KEYS.has(leaf)) {
+  if (documentType === 'House' && (inHouse || inMaster)) {
     return 'house';
   }
 
-  if (MASTER_LEAF_KEYS.has(leaf)) {
+  if (inHouse && !inMaster) {
+    return 'house';
+  }
+
+  if (inMaster) {
     return 'master';
   }
 

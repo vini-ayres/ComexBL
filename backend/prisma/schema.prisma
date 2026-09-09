@@ -233,8 +233,8 @@ model BlCampoRevisao {
   BlHouseId       Int?
   CampoKey        String   @db.VarChar(50)
   CampoLabel      String   @db.NVarChar(200)
-  ValorRecebido   String   @db.NVarChar(500)
-  ValorManual     String?  @db.NVarChar(500)
+  ValorRecebido   String   @db.NVarChar(Max)
+  ValorManual     String?  @db.NVarChar(Max)
   Confianca       Int      @default(0)
   Status          String   @default("pendente") @db.VarChar(20)
   UpdatedByUserId Int?
@@ -259,8 +259,8 @@ model BlHistoricoAlteracao {
   UserId       Int?
   Usuario      String   @db.NVarChar(200)
   Campo        String   @db.NVarChar(200)
-  ValorAntes   String   @db.NVarChar(500)
-  ValorDepois  String   @db.NVarChar(500)
+  ValorAntes   String   @db.NVarChar(Max)
+  ValorDepois  String   @db.NVarChar(Max)
   Acao         String   @default("edicao") @db.VarChar(30)
   CreatedAt    DateTime @default(now()) @map("CreatedAt")
 
@@ -303,8 +303,8 @@ model BlDivergenciaCampo {
   BlDivergenciaId Int
   CampoKey        String @db.VarChar(200)
   CampoLabel      String @db.NVarChar(200)
-  ValorBlFinal    String @db.NVarChar(500)
-  ValorGlobalSys  String @db.NVarChar(500)
+  ValorBlFinal    String @db.NVarChar(Max)
+  ValorGlobalSys  String @db.NVarChar(Max)
   Status          String @db.VarChar(20)
   Categoria       String @db.VarChar(10)
 

@@ -11,8 +11,9 @@ import { HealthService } from './services/health.service.js';
 async function bootstrap(): Promise<void> {
   logger.info('Iniciando API ComexBL...');
   logger.info(
-    `SQL Server: ${env.database.server}:${env.database.port}/${env.database.name} ` +
-      `(encrypt=${env.database.encrypt}, trustServerCertificate=${env.database.trustServerCertificate}, ` +
+    `SQL Server: ${env.database.server}${env.database.server.includes('\\') ? '' : `:${env.database.port}`}/${env.database.name} ` +
+      `(authMode=${env.database.authMode || (env.database.domain ? 'ntlm' : 'sql')}, ` +
+      `encrypt=${env.database.encrypt}, trustServerCertificate=${env.database.trustServerCertificate}, ` +
       `connectionTimeout=${env.database.connectionTimeoutMs}ms, requestTimeout=${env.database.requestTimeoutMs}ms)`,
   );
 

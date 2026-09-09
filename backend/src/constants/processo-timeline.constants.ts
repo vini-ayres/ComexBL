@@ -9,6 +9,7 @@ export type ProcessoTimelineEventType =
   | 'resolucao_divergencia'
   | 'consulta_globalsys'
   | 'workflow'
+  | 'xml_dispatch'
   | 'processo_etapa';
 
 /** Status visual de um item da timeline. */
@@ -28,5 +29,6 @@ export const DEFAULT_PROCESSO_ETAPAS = [
   { ordem: 5, titulo: 'Comparação', eventType: 'comparacao' as const },
   { ordem: 6, titulo: 'Divergências', eventType: 'divergencia' as const },
   { ordem: 7, titulo: 'Resolução', eventType: 'resolucao_divergencia' as const },
-  { ordem: 8, titulo: 'Processo finalizado', eventType: 'workflow' as const },
+  { ordem: 8, titulo: 'Integração XML', eventType: 'xml_dispatch' as const },
+  { ordem: 9, titulo: 'Processo finalizado', eventType: 'workflow' as const },
 ] as const;

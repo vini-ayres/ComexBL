@@ -1,13 +1,13 @@
 import { config } from 'dotenv';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { buildDatabaseUrl } from '../utils/sql-server-connection.js';
+
+export { buildDatabaseUrl, escapeSqlServerValue } from '../utils/sql-server-connection.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 config({ path: resolve(__dirname, '../../.env') });
-
-/** Caracteres que exigem escape JDBC/MSSQL na connection string do Prisma. */
-const SQL_SERVER_ESCAPE_PATTERN = /[\\;=:[\]/{}@#!]/;
 
 function requireEnv(key: string): string {
   const value = process.env[key];
@@ -64,52 +64,13 @@ function parsePositiveIntEnv(key: string, defaultValue: number): number {
   return Math.trunc(parsed);
 }
 
-/**
- * Escapa valores para connection string SQL Server (Prisma/JDBC).
- * Não usar encodeURIComponent — senhas com @, #, ! devem ir entre chaves {}.
- * @see https://www.prisma.io/docs/orm/overview/databases/sql-server
- */
-export function escapeSqlServerValue(value: string): string {
-  if (!SQL_SERVER_ESCAPE_PATTERN.test(value)) {
-    return value;
-  }
-
-  const escaped = value.replace(/\}/g, '}}').replace(/\{/g, '{{');
-  return `{${escaped}}`;
-}
-
-export function buildDatabaseUrl(options: {
-  server: string;
-  port: number;
-  user: string;
-  password: string;
-  database: string;
-  encrypt: boolean;
-  trustServerCertificate: boolean;
-  connectionTimeoutMs: number;
-  requestTimeoutMs: number;
-}): string {
-  const connectionTimeoutSec = Math.ceil(options.connectionTimeoutMs / 1000);
-  const requestTimeoutSec = Math.ceil(options.requestTimeoutMs / 1000);
-
-  return [
-    `sqlserver://${options.server}:${options.port}`,
-    `database=${escapeSqlServerValue(options.database)}`,
-    `user=${escapeSqlServerValue(options.user)}`,
-    `password=${escapeSqlServerValue(options.password)}`,
-    `encrypt=${options.encrypt}`,
-    `trustServerCertificate=${options.trustServerCertificate}`,
-    `connectionTimeout=${connectionTimeoutSec}`,
-    `connectTimeout=${connectionTimeoutSec}`,
-    `requestTimeout=${requestTimeoutSec}`,
-  ].join(';');
-}
-
 const dbServer = requireEnv('DB_SERVER');
 const dbPort = parsePositiveIntEnv('DB_PORT', 1433);
 const dbUser = requireEnv('DB_USER');
 const dbPassword = requireEnv('DB_PASSWORD');
 const dbName = requireEnv('DB_NAME');
+const dbDomain = optionalEnv('DB_DOMAIN') ?? '';
+const dbAuthMode = optionalEnv('DB_AUTH_MODE') ?? '';
 const dbEncrypt = parseBooleanEnv('DB_ENCRYPT', false);
 const dbTrustServerCertificate = parseBooleanEnv(
   'DB_TRUST_SERVER_CERTIFICATE',
@@ -123,7 +84,9 @@ const databaseUrl = buildDatabaseUrl({
   port: dbPort,
   user: dbUser,
   password: dbPassword,
-  database: dbName,
+  name: dbName,
+  domain: dbDomain,
+  authMode: dbAuthMode,
   encrypt: dbEncrypt,
   trustServerCertificate: dbTrustServerCertificate,
   connectionTimeoutMs: dbConnectionTimeout,
@@ -179,6 +142,8 @@ export const env = {
     user: dbUser,
     password: dbPassword,
     name: dbName,
+    domain: dbDomain,
+    authMode: dbAuthMode,
     encrypt: dbEncrypt,
     trustServerCertificate: dbTrustServerCertificate,
     connectionTimeoutMs: dbConnectionTimeout,

@@ -2,6 +2,7 @@ import type { BlHouse, BlMaster, BlWorkflow, BlXmlDispatch } from '@prisma/clien
 import type { BlStatus } from '../types/bl.types.js';
 import type { BlLotHouseDto } from '../types/bl-lot.types.js';
 import {
+  XML_DISPATCH_STATUS,
   XML_DISPATCH_UI_STATUS,
   type XmlDispatchUiStatus,
 } from '../constants/xml-dispatch.constants.js';
@@ -26,9 +27,12 @@ export function asWorkflowStatus(status: string | null | undefined): BlStatus {
 export function asXmlDispatchUiStatus(
   status: string | null | undefined,
 ): XmlDispatchUiStatus {
-  if (status === 'enviado') return XML_DISPATCH_UI_STATUS.ENVIADO;
-  if (status === 'falhou') return XML_DISPATCH_UI_STATUS.FALHOU;
-  if (status === 'pendente') return XML_DISPATCH_UI_STATUS.PENDENTE;
+  const normalized = status?.trim().toLowerCase();
+  if (normalized === XML_DISPATCH_STATUS.SUCESSO) return XML_DISPATCH_UI_STATUS.SUCESSO;
+  if (normalized === XML_DISPATCH_STATUS.ERRO) return XML_DISPATCH_UI_STATUS.ERRO;
+  if (normalized === XML_DISPATCH_STATUS.ENVIADO) return XML_DISPATCH_UI_STATUS.ENVIADO;
+  if (normalized === XML_DISPATCH_STATUS.FALHOU) return XML_DISPATCH_UI_STATUS.FALHOU;
+  if (normalized === XML_DISPATCH_STATUS.PENDENTE) return XML_DISPATCH_UI_STATUS.PENDENTE;
   return XML_DISPATCH_UI_STATUS.NAO_ENVIADO;
 }
 
@@ -122,26 +126,53 @@ export function indexXmlDispatchesByHouseId(
   return map;
 }
 
+export function aggregateXmlUiStatuses(
+  statuses: XmlDispatchUiStatus[],
+  expectedCount: number,
+): XmlDispatchUiStatus {
+  if (expectedCount === 0 || statuses.length === 0) {
+    return XML_DISPATCH_UI_STATUS.NAO_ENVIADO;
+  }
+
+  if (
+    statuses.length >= expectedCount &&
+    statuses.every((status) => status === XML_DISPATCH_UI_STATUS.SUCESSO)
+  ) {
+    return XML_DISPATCH_UI_STATUS.SUCESSO;
+  }
+
+  if (
+    statuses.length >= expectedCount &&
+    statuses.every(
+      (status) =>
+        status === XML_DISPATCH_UI_STATUS.ENVIADO ||
+        status === XML_DISPATCH_UI_STATUS.SUCESSO,
+    )
+  ) {
+    return XML_DISPATCH_UI_STATUS.ENVIADO;
+  }
+
+  if (statuses.some((status) => status === XML_DISPATCH_UI_STATUS.ERRO)) {
+    return XML_DISPATCH_UI_STATUS.ERRO;
+  }
+  if (statuses.some((status) => status === XML_DISPATCH_UI_STATUS.FALHOU)) {
+    return XML_DISPATCH_UI_STATUS.FALHOU;
+  }
+  if (statuses.some((status) => status === XML_DISPATCH_UI_STATUS.PENDENTE)) {
+    return XML_DISPATCH_UI_STATUS.PENDENTE;
+  }
+
+  return XML_DISPATCH_UI_STATUS.NAO_ENVIADO;
+}
+
 export function aggregateXmlDispatchStatus(
   records: BlXmlDispatch[],
   houseCount: number,
 ): XmlDispatchUiStatus {
-  if (houseCount === 0 || records.length === 0) {
-    return XML_DISPATCH_UI_STATUS.NAO_ENVIADO;
-  }
-  if (
-    records.length >= houseCount &&
-    records.every((record) => record.Status === 'enviado')
-  ) {
-    return XML_DISPATCH_UI_STATUS.ENVIADO;
-  }
-  if (records.some((record) => record.Status === 'falhou')) {
-    return XML_DISPATCH_UI_STATUS.FALHOU;
-  }
-  if (records.some((record) => record.Status === 'pendente')) {
-    return XML_DISPATCH_UI_STATUS.PENDENTE;
-  }
-  return XML_DISPATCH_UI_STATUS.NAO_ENVIADO;
+  return aggregateXmlUiStatuses(
+    records.map((record) => asXmlDispatchUiStatus(record.Status)),
+    houseCount,
+  );
 }
 
 export function formatMasterCreatedAt(master: BlMaster): string {

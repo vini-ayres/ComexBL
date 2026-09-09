@@ -96,6 +96,59 @@ describe('computeLotStatus', () => {
     );
   });
 
+  it('marca xml_sucesso quando o n8n confirma integração de todos os Houses', () => {
+    assert.equal(
+      computeLotStatus({
+        masterFinalized: true,
+        houses: [
+          {
+            houseFinalized: true,
+            xmlStatus: XML_DISPATCH_UI_STATUS.SUCESSO,
+          },
+          {
+            houseFinalized: true,
+            xmlStatus: XML_DISPATCH_UI_STATUS.SUCESSO,
+          },
+        ],
+      }),
+      LOT_STATUS.XML_SUCESSO,
+    );
+  });
+
+  it('mantém xml_enviado enquanto algum House ainda aguarda integração no GlobalSys', () => {
+    assert.equal(
+      computeLotStatus({
+        masterFinalized: true,
+        houses: [
+          {
+            houseFinalized: true,
+            xmlStatus: XML_DISPATCH_UI_STATUS.SUCESSO,
+          },
+          {
+            houseFinalized: true,
+            xmlStatus: XML_DISPATCH_UI_STATUS.ENVIADO,
+          },
+        ],
+      }),
+      LOT_STATUS.XML_ENVIADO,
+    );
+  });
+
+  it('marca xml_erro quando a integração no GlobalSys falha', () => {
+    assert.equal(
+      computeLotStatus({
+        masterFinalized: true,
+        houses: [
+          {
+            houseFinalized: true,
+            xmlStatus: XML_DISPATCH_UI_STATUS.ERRO,
+          },
+        ],
+      }),
+      LOT_STATUS.XML_ERRO,
+    );
+  });
+
   it('não dispara se o House do lote ainda não finalizou', () => {
     assert.equal(
       computeLotStatus({

@@ -28,7 +28,6 @@ import { prisma } from '../prisma/client.js';
  */
 
 const CAMPO_KEY_MAX_LENGTH = 200;
-const VALOR_MAX_LENGTH = 500;
 
 function truncate(value: string, maxLength: number): string {
   return value.length <= maxLength ? value : value.slice(0, maxLength);
@@ -39,12 +38,13 @@ function formatPersistedValue(value: string | number | null): string {
     return '';
   }
 
-  return truncate(String(value), VALOR_MAX_LENGTH);
+  return String(value);
 }
 
 function mapDifferenceToCampoRow(
   blDivergenciaId: number,
   difference: ComparisonDifference,
+  documentType: 'Master' | 'House',
 ): Prisma.BlDivergenciaCampoCreateManyInput {
   const campoKey = truncate(difference.path, CAMPO_KEY_MAX_LENGTH);
 
@@ -55,7 +55,7 @@ function mapDifferenceToCampoRow(
     ValorBlFinal: formatPersistedValue(difference.localValue),
     ValorGlobalSys: formatPersistedValue(difference.globalSysValue),
     Status: DIVERGENCIA_CAMPO_STATUS.PENDENTE,
-    Categoria: resolveDivergenciaCampoCategoria(campoKey),
+    Categoria: resolveDivergenciaCampoCategoria(campoKey, documentType),
   };
 }
 
@@ -97,7 +97,7 @@ export class DivergenciaRepository {
       await client.blDivergenciaCampo.createMany({
         data: uniqueCampoRows(
           result.differences.map((difference) =>
-            mapDifferenceToCampoRow(divergencia.Id, difference),
+            mapDifferenceToCampoRow(divergencia.Id, difference, 'Master'),
           ),
         ),
       });
@@ -136,7 +136,7 @@ export class DivergenciaRepository {
       await client.blDivergenciaCampo.createMany({
         data: uniqueCampoRows(
           result.differences.map((difference) =>
-            mapDifferenceToCampoRow(divergencia.Id, difference),
+            mapDifferenceToCampoRow(divergencia.Id, difference, 'House'),
           ),
         ),
       });

@@ -1,5 +1,5 @@
 import { Prisma, type BlXmlDispatch } from '@prisma/client';
-import { XML_DISPATCH_STATUS } from '../constants/xml-dispatch.constants.js';
+import { XML_DISPATCH_STATUS, isXmlRecordAlreadySent } from '../constants/xml-dispatch.constants.js';
 import { prisma } from '../prisma/client.js';
 
 export class BlXmlDispatchRepository {
@@ -16,12 +16,14 @@ export class BlXmlDispatchRepository {
 
     return prisma.blXmlDispatch.findMany({
       where: { BlHouseId: { in: blHouseIds } },
+      orderBy: { UpdatedAt: 'desc' },
     });
   }
 
   async findByMasterId(blMasterId: number): Promise<BlXmlDispatch[]> {
     return prisma.blXmlDispatch.findMany({
       where: { BlMasterId: blMasterId },
+      orderBy: { UpdatedAt: 'desc' },
     });
   }
 
@@ -32,6 +34,7 @@ export class BlXmlDispatchRepository {
 
     return prisma.blXmlDispatch.findMany({
       where: { BlMasterId: { in: blMasterIds } },
+      orderBy: { UpdatedAt: 'desc' },
     });
   }
 
@@ -118,7 +121,7 @@ export class BlXmlDispatchRepository {
       return 'claimed';
     }
 
-    if (existing.Status === XML_DISPATCH_STATUS.ENVIADO && !force) {
+    if (isXmlRecordAlreadySent(existing.Status) && !force) {
       return 'already_sent';
     }
 

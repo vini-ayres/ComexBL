@@ -53,12 +53,42 @@ export const BL_FINAL_MASTER_GLOBALSYS_FIELDS: readonly GlobalSysComparisonField
     homologationNotes: 'TB_BL.ID_PARCEIRO_TRANSPORTADOR → TB_PARCEIRO.NM_RAZAO.',
   },
   {
+    blFinalKey: 'shipperName',
+    globalSysColumn: 'ShipperName',
+    label: 'Shipper Name',
+    homologationStatus: 'confirmed',
+    homologationNotes:
+      'TB_BL.ID_PARCEIRO_AGENTE_INTERNACIONAL → TB_PARCEIRO.NM_RAZAO.',
+  },
+  {
+    blFinalKey: 'serviceTerm',
+    globalSysColumn: 'ServiceTerm',
+    label: 'Service Term',
+    homologationStatus: 'confirmed',
+    homologationNotes:
+      'TB_BL.ID_TIPO_MODALIDADE → TB_TIPO_MODALIDADE.NM_TIPO_MODALIDADE.',
+  },
+  {
     blFinalKey: 'freightTerm',
     globalSysColumn: 'FreightTerm',
     label: 'Freight Term',
     homologationStatus: 'confirmed',
     homologationNotes:
       'TB_TIPO_PAGAMENTO.NM_TIPO_PAGAMENTO (PREPAID/COLLECT), com fallback P/C → texto.',
+  },
+  {
+    blFinalKey: 'loadingPortName',
+    globalSysColumn: 'LoadingPortName',
+    label: 'Loading Port Name',
+    homologationStatus: 'confirmed',
+    homologationNotes: 'TB_BL.ID_PORTO_ORIGEM → TB_PORTO.NM_PORTO.',
+  },
+  {
+    blFinalKey: 'dischargePortName',
+    globalSysColumn: 'DischargePortName',
+    label: 'Discharge Port Name',
+    homologationStatus: 'confirmed',
+    homologationNotes: 'TB_BL.ID_PORTO_DESTINO → TB_PORTO.NM_PORTO.',
   },
   {
     blFinalKey: 'containerNumber',
@@ -107,12 +137,26 @@ export const BL_FINAL_HOUSE_GLOBALSYS_FIELDS: readonly GlobalSysComparisonFieldM
     homologationNotes: 'TB_BL.ID_PARCEIRO_NOTIFY → TB_PARCEIRO.NM_RAZAO.',
   },
   {
-    blFinalKey: 'deliveryPortName',
-    globalSysColumn: 'DeliveryPortName',
-    label: 'Delivery Port Name',
+    blFinalKey: 'serviceTerm',
+    globalSysColumn: 'ServiceTerm',
+    label: 'Service Term',
     homologationStatus: 'confirmed',
     homologationNotes:
-      'Manifesto DELIVERY_PORT_NAME, com fallback TB_CIDADE / TB_PORTO destino.',
+      'TB_BL.ID_TIPO_MODALIDADE → TB_TIPO_MODALIDADE.NM_TIPO_MODALIDADE.',
+  },
+  {
+    blFinalKey: 'loadingPortName',
+    globalSysColumn: 'LoadingPortName',
+    label: 'Loading Port Name',
+    homologationStatus: 'confirmed',
+    homologationNotes: 'TB_BL.ID_PORTO_ORIGEM → TB_PORTO.NM_PORTO.',
+  },
+  {
+    blFinalKey: 'dischargePortName',
+    globalSysColumn: 'DischargePortName',
+    label: 'Discharge Port Name',
+    homologationStatus: 'confirmed',
+    homologationNotes: 'TB_BL.ID_PORTO_DESTINO → TB_PORTO.NM_PORTO.',
   },
   {
     blFinalKey: 'packingQuantity',

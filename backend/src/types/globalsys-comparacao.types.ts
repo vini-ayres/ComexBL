@@ -10,6 +10,7 @@ export interface GlobalSysMasterDto {
   voyage: string | null;
   carrierName: string | null;
   carrierScacCode: string | null;
+  serviceTerm: string | null;
   freightTerm: string | null;
   loadingPortCode: string | null;
   loadingPortName: string | null;
@@ -31,6 +32,7 @@ export interface GlobalSysHouseDto {
   shipperName: string | null;
   consigneeName: string | null;
   notifyName: string | null;
+  serviceTerm: string | null;
   loadingPortCode: string | null;
   loadingPortName: string | null;
   dischargePortCode: string | null;

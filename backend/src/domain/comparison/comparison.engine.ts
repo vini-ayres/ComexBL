@@ -5,7 +5,6 @@ import type {
   CanonicalContainer,
   CanonicalNcm,
   CanonicalParty,
-  CanonicalPort,
 } from '../canonical/canonical-shared.types.js';
 import {
   ComparisonCategory,
@@ -20,11 +19,6 @@ interface ScalarFieldSpec {
   field: string;
   category: ComparisonCategory;
   read: (document: CanonicalMasterBl | CanonicalHouseBl) => string | number | null;
-}
-
-interface PortFieldSpec {
-  pathPrefix: string;
-  read: (document: CanonicalMasterBl | CanonicalHouseBl) => CanonicalPort;
 }
 
 interface PartyFieldSpec {
@@ -64,10 +58,34 @@ const MASTER_SCALAR_FIELDS: readonly ScalarFieldSpec[] = [
     read: (document) => (document as CanonicalMasterBl).carrierName,
   },
   {
+    path: 'shipperName',
+    field: 'ShipperName',
+    category: ComparisonCategory.GENERAL,
+    read: (document) => (document as CanonicalMasterBl).shipper.name,
+  },
+  {
+    path: 'serviceTerm',
+    field: 'ServiceTerm',
+    category: ComparisonCategory.GENERAL,
+    read: (document) => (document as CanonicalMasterBl).serviceTerm,
+  },
+  {
     path: 'freightTerm',
     field: 'FreightTerm',
     category: ComparisonCategory.GENERAL,
     read: (document) => (document as CanonicalMasterBl).freightTerm,
+  },
+  {
+    path: 'loadingPortName',
+    field: 'LoadingPortName',
+    category: ComparisonCategory.GENERAL,
+    read: (document) => (document as CanonicalMasterBl).loadingPort.name,
+  },
+  {
+    path: 'dischargePortName',
+    field: 'DischargePortName',
+    category: ComparisonCategory.GENERAL,
+    read: (document) => (document as CanonicalMasterBl).dischargePort.name,
   },
   {
     path: 'packingQuantity',
@@ -101,6 +119,24 @@ const HOUSE_SCALAR_FIELDS: readonly ScalarFieldSpec[] = [
     field: 'HouseNumber',
     category: ComparisonCategory.HOUSE,
     read: (document) => (document as CanonicalHouseBl).houseNumber,
+  },
+  {
+    path: 'serviceTerm',
+    field: 'ServiceTerm',
+    category: ComparisonCategory.GENERAL,
+    read: (document) => (document as CanonicalHouseBl).serviceTerm,
+  },
+  {
+    path: 'loadingPortName',
+    field: 'LoadingPortName',
+    category: ComparisonCategory.GENERAL,
+    read: (document) => (document as CanonicalHouseBl).loadingPort.name,
+  },
+  {
+    path: 'dischargePortName',
+    field: 'DischargePortName',
+    category: ComparisonCategory.GENERAL,
+    read: (document) => (document as CanonicalHouseBl).dischargePort.name,
   },
   {
     path: 'packingQuantity',
@@ -146,13 +182,6 @@ const HOUSE_PARTY_FIELDS: readonly PartyFieldSpec[] = [
   {
     pathPrefix: 'notify',
     read: (document) => (document as CanonicalHouseBl).notify,
-  },
-];
-
-const HOUSE_PORT_FIELDS: readonly PortFieldSpec[] = [
-  {
-    pathPrefix: 'deliveryPort',
-    read: (document) => (document as CanonicalHouseBl).deliveryPort,
   },
 ];
 
@@ -281,22 +310,6 @@ function comparePartyName(
   );
 }
 
-function comparePortName(
-  pathPrefix: string,
-  local: CanonicalPort,
-  globalSys: CanonicalPort,
-  differences: ComparisonDifference[],
-): void {
-  compareScalar(
-    `${pathPrefix}.name`,
-    'Name',
-    ComparisonCategory.PORT,
-    local.name,
-    globalSys.name,
-    differences,
-  );
-}
-
 function compareContainerFields(
   local: CanonicalContainer,
   globalSys: CanonicalContainer,
@@ -412,10 +425,6 @@ export class ComparisonEngine {
 
     for (const spec of HOUSE_PARTY_FIELDS) {
       comparePartyName(spec.pathPrefix, spec.read(local), spec.read(globalSys), differences);
-    }
-
-    for (const spec of HOUSE_PORT_FIELDS) {
-      comparePortName(spec.pathPrefix, spec.read(local), spec.read(globalSys), differences);
     }
 
     compareContainerFields(

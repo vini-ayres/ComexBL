@@ -1,4 +1,5 @@
-import { buildDatabaseUrl, env } from '../config/env.js';
+import { env } from '../config/env.js';
+import { buildDatabaseUrl } from '../utils/sql-server-connection.js';
 import type {
   GlobalSysConfigInput,
   GlobalSysRuntimeConfig,
@@ -118,8 +119,8 @@ export function localDbRuntimeFromEnv(): GlobalSysRuntimeConfig {
     server: env.database.server,
     port: env.database.port,
     name: env.database.name,
-    domain: '',
-    authMode: 'sql',
+    domain: env.database.domain,
+    authMode: env.database.authMode,
     user: env.database.user,
     password: env.database.password,
     encrypt: env.database.encrypt,
@@ -348,22 +349,7 @@ export function toStoredGlobalSysConfig(config: GlobalSysRuntimeConfig): StoredG
 }
 
 export function sqlServerRuntimeToDatabaseUrl(config: GlobalSysRuntimeConfig): string {
-  const user =
-    config.domain && !config.user.includes('\\') && !config.user.includes('@')
-      ? `${config.domain}\\${config.user}`
-      : config.user;
-
-  return buildDatabaseUrl({
-    server: config.server,
-    port: config.port,
-    user,
-    password: config.password,
-    database: config.name,
-    encrypt: config.encrypt,
-    trustServerCertificate: config.trustServerCertificate,
-    connectionTimeoutMs: config.connectionTimeoutMs,
-    requestTimeoutMs: config.requestTimeoutMs,
-  });
+  return buildDatabaseUrl(config);
 }
 
 export function redactLdapForAudit(config: StoredLdapConfig): Record<string, unknown> {

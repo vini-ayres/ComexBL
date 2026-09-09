@@ -727,7 +727,10 @@ export class DivergenciaService {
         campoLabel: field.campoLabel,
         valorDraft: field.draftValue ?? '',
         valorFinal: field.finalValue ?? '',
-        categoria: resolveDivergenciaCampoCategoria(field.campoKey),
+        categoria: resolveDivergenciaCampoCategoria(
+          field.campoKey,
+          comparison.documentType,
+        ),
       });
     }
 
@@ -1256,7 +1259,10 @@ export class DivergenciaService {
         campoLabel: field.campoLabel,
         valorBlFinal: field.blFinalValue ?? '',
         valorGlobalSys: field.globalSysValue ?? '',
-        categoria: resolveDivergenciaCampoCategoria(field.campoKey),
+        categoria: resolveDivergenciaCampoCategoria(
+          field.campoKey,
+          comparison.documentType,
+        ),
         status: field.divergent
           ? DIVERGENCIA_CAMPO_STATUS.PENDENTE
           : DIVERGENCIA_CAMPO_STATUS.IGUAL,

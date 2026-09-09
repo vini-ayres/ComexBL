@@ -7,6 +7,12 @@ import {
   HOUSE_SCALAR_FIELDS,
 } from '../constants/bl-comparison.constants.js';
 import type { SaveApoioHumanoCampoInput } from '../types/apoio-humano.types.js';
+import { BadRequestError } from '../errors/AppError.js';
+import {
+  APOIO_HUMANO_SAVE_MESSAGES,
+  hasUsableContainerNumber,
+  isContainerNumberCampoKey,
+} from '../utils/apoio-humano-save-rules.js';
 import {
   buildCargoLogicalKey,
   normalizeNcmCode,
@@ -108,6 +114,10 @@ function buildScalarUpdateData(
     }
 
     const value = resolveEffectiveValue(campo);
+
+    if (isContainerNumberCampoKey(campo.campoKey) && !hasUsableContainerNumber(value)) {
+      throw new BadRequestError(APOIO_HUMANO_SAVE_MESSAGES.containerNumberRequired);
+    }
 
     if (value == null) {
       if (campo.status === 'editado') {
