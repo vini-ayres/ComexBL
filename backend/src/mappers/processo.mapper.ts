@@ -12,6 +12,10 @@ import {
   type ProcessoTimelineEventType,
   type ProcessoTimelineItemStatus,
 } from '../constants/processo-timeline.constants.js';
+import {
+  XML_DISPATCH_UI_STATUS,
+  type XmlDispatchUiStatus,
+} from '../constants/xml-dispatch.constants.js';
 import type { BlDocumentType } from '../types/bl-domain.types.js';
 import type { BlVersion } from '../constants/bl-version.constants.js';
 import type {
@@ -228,6 +232,178 @@ function resolveRevisaoValor(revisao: BlCampoRevisao): string | null {
   return null;
 }
 
+const XML_EVENT_COPY: Record<
+  XmlDispatchUiStatus,
+  { titulo: string; descricao: string; status: ProcessoTimelineItemStatus }
+> = {
+  [XML_DISPATCH_UI_STATUS.SUCESSO]: {
+    titulo: 'XML integrado',
+    descricao: 'Integrado no GlobalSys',
+    status: 'concluido',
+  },
+  [XML_DISPATCH_UI_STATUS.ERRO]: {
+    titulo: 'Erro na integração XML',
+    descricao: 'XML não integrou no GlobalSys',
+    status: 'erro',
+  },
+  [XML_DISPATCH_UI_STATUS.ENVIADO]: {
+    titulo: 'XML enviado',
+    descricao: 'Aguardando processamento no GlobalSys',
+    status: 'em_andamento',
+  },
+  [XML_DISPATCH_UI_STATUS.FALHOU]: {
+    titulo: 'Falha no envio do XML',
+    descricao: 'Falha ao enviar o XML ao GlobalSys',
+    status: 'erro',
+  },
+  [XML_DISPATCH_UI_STATUS.PENDENTE]: {
+    titulo: 'Enviando XML',
+    descricao: 'Envio do XML em andamento',
+    status: 'em_andamento',
+  },
+  [XML_DISPATCH_UI_STATUS.NAO_ENVIADO]: {
+    titulo: 'XML não enviado',
+    descricao: 'Aguardando envio do XML',
+    status: 'pendente',
+  },
+};
+
+export function mapXmlDispatchEvent(params: {
+  documentType: BlDocumentType;
+  documentNumber: string;
+  status: XmlDispatchUiStatus;
+  occurredAt: Date;
+  error: string | null;
+}): ProcessoTimelineEventDto {
+  const copy = XML_EVENT_COPY[params.status];
+
+  return {
+    id: `xml-dispatch-${params.documentType}-${params.documentNumber}`,
+    eventType: 'xml_dispatch',
+    titulo: copy.titulo,
+    descricao: params.error?.trim() || copy.descricao,
+    status: copy.status,
+    occurredAt: params.occurredAt.toISOString(),
+    source: 'dinamico',
+    metadata: {
+      xmlStatus: params.status,
+    },
+  };
+}
+
+function isProcessoFinalizadoEtapa(etapa: ProcessoTimelineEtapaDto): boolean {
+  const titulo = etapa.titulo.trim().toLowerCase();
+  return titulo === 'processo finalizado' || titulo === 'finalizado';
+}
+
+function hasXmlEtapa(etapas: ProcessoTimelineEtapaDto[]): boolean {
+  return etapas.some(
+    (etapa) =>
+      etapa.events.some((event) => event.eventType === 'xml_dispatch') ||
+      /xml|integra/i.test(etapa.titulo),
+  );
+}
+
+function insertXmlEtapa(
+  etapas: ProcessoTimelineEtapaDto[],
+  xmlEvent: ProcessoTimelineEventDto | undefined,
+): ProcessoTimelineEtapaDto[] {
+  if (!xmlEvent || hasXmlEtapa(etapas)) {
+    return etapas;
+  }
+
+  const xmlEtapa: ProcessoTimelineEtapaDto = {
+    ordem: 0,
+    titulo: 'Integração XML',
+    status: xmlEvent.status,
+    descricao: xmlEvent.descricao,
+    completedAt: xmlEvent.status === 'concluido' ? xmlEvent.occurredAt : null,
+    source: 'dinamico',
+    events: [xmlEvent],
+  };
+
+  const next = [...etapas];
+  const finalIdx = next.findIndex(isProcessoFinalizadoEtapa);
+  if (finalIdx >= 0) {
+    next.splice(finalIdx, 0, xmlEtapa);
+  } else {
+    next.push(xmlEtapa);
+  }
+
+  return next.map((etapa, index) => ({ ...etapa, ordem: index + 1 }));
+}
+
+function applyXmlIntegrationGate(
+  etapas: ProcessoTimelineEtapaDto[],
+  xmlEvent: ProcessoTimelineEventDto | undefined,
+): ProcessoTimelineEtapaDto[] {
+  const xmlStatus =
+    typeof xmlEvent?.metadata?.xmlStatus === 'string'
+      ? xmlEvent.metadata.xmlStatus
+      : null;
+  const hasNamedFinal = etapas.some(isProcessoFinalizadoEtapa);
+
+  return etapas.map((etapa, index) => {
+    const isTarget =
+      isProcessoFinalizadoEtapa(etapa) ||
+      (!hasNamedFinal && index === etapas.length - 1);
+
+    if (!isTarget) {
+      return etapa;
+    }
+
+    if (xmlStatus === XML_DISPATCH_UI_STATUS.SUCESSO) {
+      return {
+        ...etapa,
+        status: 'concluido',
+        completedAt: xmlEvent?.occurredAt ?? etapa.completedAt,
+        descricao: 'Todos os passos foram concluídos com sucesso',
+      };
+    }
+
+    if (
+      xmlStatus === XML_DISPATCH_UI_STATUS.ERRO ||
+      xmlStatus === XML_DISPATCH_UI_STATUS.FALHOU
+    ) {
+      return {
+        ...etapa,
+        status: 'erro',
+        completedAt: null,
+        descricao: xmlEvent?.descricao ?? 'XML não integrou no GlobalSys',
+      };
+    }
+
+    if (
+      xmlStatus === XML_DISPATCH_UI_STATUS.ENVIADO ||
+      xmlStatus === XML_DISPATCH_UI_STATUS.PENDENTE
+    ) {
+      return {
+        ...etapa,
+        status: 'em_andamento',
+        completedAt: null,
+        descricao: xmlEvent?.descricao ?? 'Aguardando integração do XML no GlobalSys',
+      };
+    }
+
+    if (etapa.status === 'concluido') {
+      return {
+        ...etapa,
+        status: 'em_andamento',
+        completedAt: null,
+        descricao: 'Aguardando envio e integração do XML',
+      };
+    }
+
+    return etapa;
+  });
+}
+
+function findXmlDispatchEvent(
+  events: ProcessoTimelineEventDto[],
+): ProcessoTimelineEventDto | undefined {
+  return [...events].reverse().find((event) => event.eventType === 'xml_dispatch');
+}
+
 function buildDynamicEtapa(
   template: (typeof DEFAULT_PROCESSO_ETAPAS)[number],
   events: ProcessoTimelineEventDto[],
@@ -244,7 +420,7 @@ function buildDynamicEtapa(
   }
 
   const completedAt =
-    etapaEvents.length > 0
+    status === 'concluido' && etapaEvents.length > 0
       ? etapaEvents[etapaEvents.length - 1].occurredAt
       : null;
 
@@ -268,25 +444,30 @@ export function mapProcessoTimelineResponse(params: {
   dynamicEvents: ProcessoTimelineEventDto[];
 }): ProcessoTimelineResponseDto {
   const hasPersisted = params.persistedEtapas.length > 0;
-
-  const etapas: ProcessoTimelineEtapaDto[] = hasPersisted
-    ? params.persistedEtapas.map(mapPersistedProcessoEtapa)
-    : DEFAULT_PROCESSO_ETAPAS.map((template) =>
-        buildDynamicEtapa(template, params.dynamicEvents),
-      );
-
-  const events = [...params.dynamicEvents].sort(
-    (a, b) => new Date(a.occurredAt).getTime() - new Date(b.occurredAt).getTime(),
-  );
+  const dynamicEvents = [...params.dynamicEvents];
 
   if (params.workflow) {
     const workflowEvent = mapWorkflowEvent(params.workflow);
-    if (!events.some((event) => event.id === workflowEvent.id)) {
-      events.push(workflowEvent);
+    if (!dynamicEvents.some((event) => event.id === workflowEvent.id)) {
+      dynamicEvents.push(workflowEvent);
     }
   }
 
-  events.sort(
+  const xmlEvent = findXmlDispatchEvent(dynamicEvents);
+
+  const etapas: ProcessoTimelineEtapaDto[] = applyXmlIntegrationGate(
+    insertXmlEtapa(
+      hasPersisted
+        ? params.persistedEtapas.map(mapPersistedProcessoEtapa)
+        : DEFAULT_PROCESSO_ETAPAS.map((template) =>
+            buildDynamicEtapa(template, dynamicEvents),
+          ),
+      xmlEvent,
+    ),
+    xmlEvent,
+  );
+
+  const events = [...dynamicEvents].sort(
     (a, b) => new Date(a.occurredAt).getTime() - new Date(b.occurredAt).getTime(),
   );
 

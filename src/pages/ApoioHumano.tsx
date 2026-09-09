@@ -15,6 +15,15 @@ import type { ApoioHumanoDetailDto, CampoExtraidoDto } from "@/lib/api/types"
 import { ApiError } from "@/lib/api/client"
 import { cn } from "@/lib/utils"
 import { groupCargoCampos, resolveCargoFieldLabel } from "@/lib/apoio-humano/cargo-display"
+import {
+  APOIO_HUMANO_SAVE_MESSAGES,
+  enforceContainerNumberPending,
+  getApoioHumanoSaveBlockReason,
+  hasUsableContainerNumber,
+  isContainerNumberCampo,
+  isEmptyApoioHumanoValue,
+  isEmptyContainerNumber,
+} from "@/lib/apoio-humano/save-rules"
 import { toast } from "sonner"
 
 type CampoCategoria = "scalar" | "cargo" | "ncm"
@@ -72,7 +81,12 @@ function CamposTable({
         <tbody className="divide-y divide-border">
           {campos.map((campo) => (
             <tr key={campo.id} className={cn("hover:bg-primary-50/30", campo.status === "pendente" && "bg-warning-50/40")}>
-              <td className="px-3 py-2.5 font-medium text-primary-900 whitespace-nowrap">{campo.campo}</td>
+                <td className="px-3 py-2.5 font-medium text-primary-900 whitespace-nowrap">
+                  {campo.campo}
+                  {isContainerNumberCampo(campo) ? (
+                    <span className="ml-1 text-danger-600" title="Campo obrigatório">*</span>
+                  ) : null}
+                </td>
               <td className="px-3 py-2.5">
                 {editingId === campo.id ? (
                   <Input
@@ -101,7 +115,13 @@ function CamposTable({
                 <div className="flex items-center justify-end gap-1">
                   {editingId === campo.id ? (
                     <>
-                      <Button variant="ghost" size="icon" className="h-7 w-7 text-success-600" onClick={() => onSaveEdit(campo.id)}>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-success-600"
+                        disabled={isContainerNumberCampo(campo) && !hasUsableContainerNumber(draftValue)}
+                        onClick={() => onSaveEdit(campo.id)}
+                      >
                         <Check className="h-3.5 w-3.5" />
                       </Button>
                       <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground" onClick={onCancelEdit}>
@@ -113,7 +133,7 @@ function CamposTable({
                       <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onStartEdit(campo)}>
                         <Pencil className="h-3.5 w-3.5" />
                       </Button>
-                      {campo.status === "pendente" && (
+                      {campo.status === "pendente" && !(isContainerNumberCampo(campo) && isEmptyContainerNumber(campo)) && (
                         <Button variant="ghost" size="icon" className="h-7 w-7 text-success-600" onClick={() => onConfirmField(campo.id)}>
                           <Check className="h-3.5 w-3.5" />
                         </Button>
@@ -191,7 +211,7 @@ export default function ApoioHumano() {
     try {
       const result = await fetchApoioHumano(targetPage)
       setData(result)
-      setCampos(result.campos)
+      setCampos(enforceContainerNumberPending(result.campos))
       setPage(result.pagination.page)
     } catch (err) {
       const message = err instanceof ApiError
@@ -210,6 +230,8 @@ export default function ApoioHumano() {
   }, [page, loadBl])
 
   const pendentesCount = campos.filter((c) => c.status === "pendente").length
+  const saveBlockReason = getApoioHumanoSaveBlockReason(campos, editingId != null)
+  const canSave = saveBlockReason == null
   const totalPages = data?.pagination.totalPages ?? 1
   const totalItems = data?.pagination.total ?? 0
   const isHouseDocument = data?.item.tipo === "House"
@@ -227,41 +249,78 @@ export default function ApoioHumano() {
     [campos],
   )
 
-  const camposTableProps = {
-    editingId,
-    draftValue,
-    onDraftChange: setDraftValue,
-    onStartEdit: startEdit,
-    onSaveEdit: saveEdit,
-    onCancelEdit: () => setEditingId(null),
-    onConfirmField: confirmField,
-  }
-
   function startEdit(campo: CampoExtraidoDto) {
     setEditingId(campo.id)
     const current = campo.valorManual ?? campo.valorRecebido
-    setDraftValue(current === "-" ? "" : current)
+    setDraftValue(isEmptyApoioHumanoValue(current) ? "" : current)
   }
 
   function saveEdit(id: string) {
+    const campo = campos.find((item) => item.id === id)
+
+    if (campo && isContainerNumberCampo(campo) && !hasUsableContainerNumber(draftValue)) {
+      toast.error(APOIO_HUMANO_SAVE_MESSAGES.containerNumberRequired)
+      return
+    }
+
     setCampos((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, valorManual: draftValue, status: "editado" } : c))
+      enforceContainerNumberPending(
+        prev.map((c) => (c.id === id ? { ...c, valorManual: draftValue, status: "editado" } : c)),
+      ),
     )
     setEditingId(null)
     toast.success("Campo atualizado com sucesso.")
   }
 
   function confirmField(id: string) {
-    setCampos((prev) => prev.map((c) => (c.id === id ? { ...c, status: "confirmado" } : c)))
+    const campo = campos.find((item) => item.id === id)
+
+    if (campo && isEmptyContainerNumber(campo)) {
+      toast.error(APOIO_HUMANO_SAVE_MESSAGES.containerNumberRequired)
+      return
+    }
+
+    setCampos((prev) =>
+      enforceContainerNumberPending(
+        prev.map((c) => (c.id === id ? { ...c, status: "confirmado" } : c)),
+      ),
+    )
   }
 
   function handleConfirmAll() {
-    setCampos((prev) => prev.map((c) => (c.status === "pendente" ? { ...c, status: "confirmado" } : c)))
+    const skippedEmptyContainer = campos.some(
+      (c) => c.status === "pendente" && isEmptyContainerNumber(c),
+    )
+
+    setCampos((prev) =>
+      enforceContainerNumberPending(
+        prev.map((c) => {
+          if (c.status !== "pendente" || isEmptyContainerNumber(c)) {
+            return c
+          }
+
+          return { ...c, status: "confirmado" }
+        }),
+      ),
+    )
+
+    if (skippedEmptyContainer) {
+      toast.error(APOIO_HUMANO_SAVE_MESSAGES.containerNumberRequired)
+      return
+    }
+
     toast.success("Todos os campos pendentes foram confirmados.")
   }
 
   async function handleSaveCorrecoes() {
     if (!data) return
+
+    const blockReason = getApoioHumanoSaveBlockReason(campos, editingId != null)
+
+    if (blockReason) {
+      toast.error(blockReason)
+      return
+    }
 
     setSaving(true)
 
@@ -306,6 +365,16 @@ export default function ApoioHumano() {
 
   function goToNext() {
     if (page < totalPages) setPage((p) => p + 1)
+  }
+
+  const camposTableProps = {
+    editingId,
+    draftValue,
+    onDraftChange: setDraftValue,
+    onStartEdit: startEdit,
+    onSaveEdit: saveEdit,
+    onCancelEdit: () => setEditingId(null),
+    onConfirmField: confirmField,
   }
 
   if (loading && !data) {
@@ -355,7 +424,7 @@ export default function ApoioHumano() {
           <div>
             <h2 className="text-lg font-bold text-primary-900">{tituloNavio}</h2>
             <p className="text-xs text-muted-foreground">
-              {data.item.tipo} · Correção manual — {pendentesCount} campo(s) nulo(s)
+              {data.item.tipo} · Correção manual — {pendentesCount} campo(s) pendente(s)
             </p>
           </div>
         </div>
@@ -373,15 +442,21 @@ export default function ApoioHumano() {
             </Button>
           </div>
           <span className="text-xs text-muted-foreground">{totalItems} BL(s) na fila</span>
-          <Button variant="outline" size="sm" onClick={handleConfirmAll}>
+          <Button variant="outline" size="sm" onClick={handleConfirmAll} disabled={saving || loading || pendentesCount === 0}>
             <Check className="h-4 w-4" /> Confirmar pendentes
           </Button>
-          <Button size="sm" onClick={() => void handleSaveCorrecoes()} disabled={saving || loading}>
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-            Salvar correções
-          </Button>
+          <span title={saveBlockReason ?? undefined}>
+            <Button size="sm" onClick={() => void handleSaveCorrecoes()} disabled={!canSave || saving || loading}>
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              Salvar correções
+            </Button>
+          </span>
         </div>
       </div>
+
+      {saveBlockReason ? (
+        <p className="text-sm text-warning-700">{saveBlockReason}</p>
+      ) : null}
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
         <DocumentViewer

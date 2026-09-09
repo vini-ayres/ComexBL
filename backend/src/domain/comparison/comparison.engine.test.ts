@@ -179,20 +179,44 @@ describe('ComparisonEngine.compareMaster', () => {
     );
   });
 
-  it('does not compare master parties or ports outside the visible field set', () => {
+  it('does not compare master consignee, notify or ports outside the visible field set', () => {
     const local = createMaster({
-      shipper: { name: 'Shipper A', address: 'Address A' },
-      loadingPort: { code: 'BRSSZ', name: 'Santos' },
+      consignee: { name: 'Consignee A', address: 'Address A' },
+      notify: { name: 'Notify A', address: 'Address C' },
+      deliveryPort: { code: 'USNYC', name: 'New York' },
     });
     const globalSys = createMaster({
-      shipper: { name: 'Shipper B', address: 'Address B' },
-      loadingPort: { code: 'BRPNG', name: 'Paranagua' },
+      consignee: { name: 'Consignee B', address: 'Address B' },
+      notify: { name: 'Notify B', address: 'Address D' },
+      deliveryPort: { code: 'USLAX', name: 'Los Angeles' },
     });
 
     const result = engine.compareMaster(local, globalSys);
 
     assert.equal(result.equal, true);
     assert.equal(result.differenceCount, 0);
+  });
+
+  it('detects ShipperName difference', () => {
+    const local = createMaster({
+      shipper: { name: 'Shipper A', address: 'Address A' },
+    });
+    const globalSys = createMaster({
+      shipper: { name: 'Agente Internacional LTDA', address: 'Address B' },
+    });
+
+    const result = engine.compareMaster(local, globalSys);
+
+    assert.equal(result.differenceCount, 1);
+    assert.deepEqual(result.differences[0], {
+      path: 'shipperName',
+      field: 'ShipperName',
+      category: ComparisonCategory.GENERAL,
+      severity: ComparisonSeverity.WARNING,
+      reason: ComparisonDifferenceReason.VALUE_MISMATCH,
+      localValue: 'Shipper A',
+      globalSysValue: 'Agente Internacional LTDA',
+    });
   });
 
   it('compares container fields using domain paths', () => {
@@ -231,6 +255,45 @@ describe('ComparisonEngine.compareMaster', () => {
 
     assert.equal(result.equal, false);
     assert.equal(result.differenceCount, 1);
+  });
+
+  it('detects ServiceTerm difference', () => {
+    const local = createMaster({ serviceTerm: 'CY/CY' });
+    const globalSys = createMaster({ serviceTerm: 'HH – House to House' });
+
+    const result = engine.compareMaster(local, globalSys);
+
+    assert.equal(result.differenceCount, 1);
+    assert.deepEqual(result.differences[0], {
+      path: 'serviceTerm',
+      field: 'ServiceTerm',
+      category: ComparisonCategory.GENERAL,
+      severity: ComparisonSeverity.WARNING,
+      reason: ComparisonDifferenceReason.VALUE_MISMATCH,
+      localValue: 'CY/CY',
+      globalSysValue: 'HH – House to House',
+    });
+  });
+
+  it('detects LoadingPortName and DischargePortName differences', () => {
+    const local = createMaster({
+      loadingPort: { code: 'CNSHA', name: 'Shanghai' },
+      dischargePort: { code: 'BRSSZ', name: 'Santos' },
+    });
+    const globalSys = createMaster({
+      loadingPort: { code: 'CNNGB', name: 'Ningbo' },
+      dischargePort: { code: 'BRPNG', name: 'Paranagua' },
+    });
+
+    const result = engine.compareMaster(local, globalSys);
+
+    assert.equal(result.differenceCount, 2);
+    assert.equal(result.differences[0]?.path, 'loadingPortName');
+    assert.equal(result.differences[0]?.localValue, 'Shanghai');
+    assert.equal(result.differences[0]?.globalSysValue, 'Ningbo');
+    assert.equal(result.differences[1]?.path, 'dischargePortName');
+    assert.equal(result.differences[1]?.localValue, 'Santos');
+    assert.equal(result.differences[1]?.globalSysValue, 'Paranagua');
   });
 });
 
@@ -428,7 +491,7 @@ describe('ComparisonEngine.compareHouse', () => {
     });
   });
 
-  it('compares notify party name and delivery port name', () => {
+  it('compares notify party name and does not compare delivery port', () => {
     const local = createHouse({
       notify: emptyParty(),
       deliveryPort: emptyPort(),
@@ -443,7 +506,7 @@ describe('ComparisonEngine.compareHouse', () => {
     assert.equal(result.differences.some((item) => item.path === 'notify.name'), true);
     assert.equal(
       result.differences.some((item) => item.path === 'deliveryPort.name'),
-      true,
+      false,
     );
     assert.equal(
       result.differences.some((item) => item.path === 'deliveryPort.code'),
@@ -481,5 +544,40 @@ describe('ComparisonEngine.compareHouse', () => {
 
     assert.equal(result.equal, true);
     assert.equal(result.differenceCount, 0);
+  });
+
+  it('detects ServiceTerm difference', () => {
+    const local = createHouse({ serviceTerm: 'CFS/CFS' });
+    const globalSys = createHouse({ serviceTerm: 'PP – Pier to Pier' });
+
+    const result = engine.compareHouse(local, globalSys);
+
+    assert.equal(result.differenceCount, 1);
+    assert.deepEqual(result.differences[0], {
+      path: 'serviceTerm',
+      field: 'ServiceTerm',
+      category: ComparisonCategory.GENERAL,
+      severity: ComparisonSeverity.WARNING,
+      reason: ComparisonDifferenceReason.VALUE_MISMATCH,
+      localValue: 'CFS/CFS',
+      globalSysValue: 'PP – Pier to Pier',
+    });
+  });
+
+  it('detects LoadingPortName and DischargePortName differences', () => {
+    const local = createHouse({
+      loadingPort: { code: 'CNSHA', name: 'Shanghai' },
+      dischargePort: { code: 'BRSSZ', name: 'Santos' },
+    });
+    const globalSys = createHouse({
+      loadingPort: { code: 'CNNGB', name: 'Ningbo' },
+      dischargePort: { code: 'BRPNG', name: 'Paranagua' },
+    });
+
+    const result = engine.compareHouse(local, globalSys);
+
+    assert.equal(result.differenceCount, 2);
+    assert.equal(result.differences[0]?.path, 'loadingPortName');
+    assert.equal(result.differences[1]?.path, 'dischargePortName');
   });
 });

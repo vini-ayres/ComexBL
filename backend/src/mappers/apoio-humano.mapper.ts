@@ -13,6 +13,10 @@ import type {
   HistoricoAlteracaoDto,
 } from '../types/apoio-humano.types.js';
 import {
+  isContainerNumberCampoKey,
+  isEmptyApoioHumanoValue,
+} from '../utils/apoio-humano-save-rules.js';
+import {
   buildCargoLogicalKey,
   formatCargoDisplayTitle,
   normalizeNcmCode,
@@ -28,12 +32,7 @@ const CARGO_FIELD_LABELS: Record<(typeof CARGO_COMPARABLE_FIELDS)[number], strin
 };
 
 function isNullOrEmpty(value: string | null | undefined): boolean {
-  if (value == null) {
-    return true;
-  }
-
-  const trimmed = value.trim();
-  return trimmed.length === 0 || trimmed === '-';
+  return isEmptyApoioHumanoValue(value);
 }
 
 function formatValue(
@@ -194,21 +193,30 @@ export function mergeCamposComRevisoes(
     const statusFromRevisao = revisao.Status as CampoExtraidoStatus;
 
     if (statusFromRevisao === 'editado' || statusFromRevisao === 'confirmado') {
+      const effectiveValue = revisao.ValorManual || campo.valorRecebido;
+
       return {
         ...campo,
         valorManual: revisao.ValorManual,
         confianca: revisao.Confianca,
-        status: statusFromRevisao,
+        status:
+          isContainerNumberCampoKey(campo.id) && isNullOrEmpty(effectiveValue)
+            ? 'pendente'
+            : statusFromRevisao,
       };
     }
 
     const effectiveValue = revisao.ValorManual || campo.valorRecebido;
+    const status = isNullOrEmpty(effectiveValue) ? 'pendente' : 'confirmado';
 
     return {
       ...campo,
       valorManual: revisao.ValorManual,
       confianca: revisao.Confianca,
-      status: isNullOrEmpty(effectiveValue) ? 'pendente' : 'confirmado',
+      status:
+        isContainerNumberCampoKey(campo.id) && isNullOrEmpty(effectiveValue)
+          ? 'pendente'
+          : status,
     };
   });
 }

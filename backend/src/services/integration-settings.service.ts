@@ -2,14 +2,13 @@ import {
   applyGlobalSysInput,
   applyLdapInput,
   composeBindUser,
+  localDbRuntimeFromEnv,
   mergeGlobalSysRuntime,
   mergeLdapRuntime,
-  mergeLocalDbRuntime,
   parseStoredGlobalSysConfig,
   parseStoredLdapConfig,
   redactGlobalSysForAudit,
   redactLdapForAudit,
-  sqlServerRuntimeToDatabaseUrl,
   toStoredGlobalSysConfig,
   toStoredLdapConfig,
 } from '../mappers/integration-config.mapper.js';
@@ -23,6 +22,7 @@ import type {
   GlobalSysConfigInput,
   GlobalSysConfigResponse,
   GlobalSysRuntimeConfig,
+  IntegrationSource,
   IntegrationStatus,
   LdapConfigInput,
   LdapConfigResponse,
@@ -36,11 +36,13 @@ export class IntegrationSettingsService {
   private ldapCache: LdapRuntimeConfig | null = null;
   private globalsysCache: GlobalSysRuntimeConfig | null = null;
   private localDbCache: GlobalSysRuntimeConfig | null = null;
+  private localDbSource: IntegrationSource | null = null;
 
   invalidate(): void {
     this.ldapCache = null;
     this.globalsysCache = null;
     this.localDbCache = null;
+    this.localDbSource = null;
   }
 
   async getLdapRuntimeConfig(): Promise<LdapRuntimeConfig> {
@@ -78,28 +80,28 @@ export class IntegrationSettingsService {
       return this.localDbCache;
     }
 
-    const record = await integrationConfigRepository.findLocalDb();
-    const merged = mergeLocalDbRuntime({
-      stored: parseStoredGlobalSysConfig(record?.ConfigJson),
-      preferStored: Boolean(record?.UpdatedByUserId),
-    });
-
-    this.localDbCache = merged.config;
-    return merged.config;
+    const fromEnv = localDbRuntimeFromEnv();
+    this.setLiveLocalDb(fromEnv, 'env');
+    return fromEnv;
   }
 
   async applyStoredLocalDbOverride(): Promise<void> {
+    const fromEnv = localDbRuntimeFromEnv();
+    this.setLiveLocalDb(fromEnv, 'env');
+
     const record = await integrationConfigRepository.findLocalDb();
-    if (!record?.UpdatedByUserId) {
-      return;
-    }
+    const extra = parseStatusExtra(record?.ConfigJson);
 
-    const config = await this.getLocalDbRuntimeConfig();
-    if (!config.enabled) {
-      return;
-    }
-
-    await reconnectPrisma(sqlServerRuntimeToDatabaseUrl(config));
+    await integrationConfigRepository.upsert({
+      type: INTEGRATION_TYPES.localDb,
+      configJson: JSON.stringify({
+        ...toStoredGlobalSysConfig(fromEnv),
+        lastError: extra.lastError,
+        latencyMs: extra.latencyMs,
+      }),
+      status: normalizeStatus(record?.Status),
+      updatedByUserId: null,
+    });
   }
 
   async getLdapPublicConfig(): Promise<LdapConfigResponse> {
@@ -175,32 +177,35 @@ export class IntegrationSettingsService {
   }
 
   async getLocalDbPublicConfig(): Promise<LocalDbConfigResponse> {
-    const record = await integrationConfigRepository.findLocalDb();
-    const merged = mergeLocalDbRuntime({
-      stored: parseStoredGlobalSysConfig(record?.ConfigJson),
-      preferStored: Boolean(record?.UpdatedByUserId),
-    });
+    const fromEnv = localDbRuntimeFromEnv();
+    const config =
+      this.localDbSource === 'database' && this.localDbCache ? this.localDbCache : fromEnv;
+    const source = this.localDbSource === 'database' ? 'database' : 'env';
 
-    this.localDbCache = merged.config;
+    if (!this.localDbCache) {
+      this.setLiveLocalDb(fromEnv, 'env');
+    }
+
+    const record = await integrationConfigRepository.findLocalDb();
     const extra = parseStatusExtra(record?.ConfigJson);
     const counts = await integrationConfigRepository.countBlRecords();
 
     return {
-      enabled: merged.config.enabled,
-      source: merged.source,
+      enabled: config.enabled,
+      source,
       status: normalizeStatus(record?.Status),
-      server: merged.config.server,
-      port: merged.config.port,
-      database: merged.config.name,
-      domain: merged.config.domain,
-      authMode: merged.config.authMode,
-      user: merged.config.user,
-      passwordSet: Boolean(merged.config.password),
-      encrypt: merged.config.encrypt,
-      trustServerCertificate: merged.config.trustServerCertificate,
+      server: config.server,
+      port: config.port,
+      database: config.name,
+      domain: config.domain,
+      authMode: config.authMode,
+      user: config.user,
+      passwordSet: Boolean(config.password),
+      encrypt: config.encrypt,
+      trustServerCertificate: config.trustServerCertificate,
       lastCheckAt: record?.LastSyncAt?.toISOString() ?? null,
       latencyMs: extra.latencyMs,
-      lastError: extra.lastError,
+      lastError: source === 'database' ? extra.lastError : null,
       masters: counts.masters,
       houses: counts.houses,
     };
@@ -287,8 +292,10 @@ export class IntegrationSettingsService {
 
     this.invalidate();
     try {
-      await reconnectPrisma(sqlServerRuntimeToDatabaseUrl(next));
+      await reconnectPrisma(next);
+      this.setLiveLocalDb(next, 'database');
     } catch (error) {
+      this.setLiveLocalDb(localDbRuntimeFromEnv(), 'env');
       const message = error instanceof Error ? error.message : 'erro desconhecido';
       throw new BadRequestError(
         `Configuração salva, mas a API não reconectou ao banco local: ${message}`,
@@ -367,6 +374,11 @@ export class IntegrationSettingsService {
     this.localDbCache = runtime;
   }
 
+  private setLiveLocalDb(config: GlobalSysRuntimeConfig, source: IntegrationSource): void {
+    this.localDbCache = config;
+    this.localDbSource = source;
+  }
+
   redactLdap(config: LdapRuntimeConfig): Record<string, unknown> {
     return redactLdapForAudit(toStoredLdapConfig(config));
   }
@@ -415,6 +427,11 @@ export class IntegrationSettingsService {
     const authMode = config.authMode.trim().toLowerCase();
     if (authMode === 'ntlm' && !config.domain.trim()) {
       throw new BadRequestError('Informe o domínio quando o modo de autenticação for NTLM.');
+    }
+    if (authMode === 'ntlm' && config.user.trim().toLowerCase() === 'sa') {
+      throw new BadRequestError(
+        'NTLM não funciona com o usuário sa. Informe uma conta de domínio Windows ou use autenticação SQL.',
+      );
     }
   }
 }

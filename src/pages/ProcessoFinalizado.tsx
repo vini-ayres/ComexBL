@@ -216,6 +216,30 @@ export default function ProcessoFinalizado() {
   const lastEvent = timeline.events[timeline.events.length - 1]
   const tempoProcessamento = formatProcessDuration(firstEvent?.occurredAt, lastEvent?.occurredAt)
 
+  const lastEtapa = [...timeline.etapas].sort((a, b) => a.ordem - b.ordem).at(-1)
+  const allStepsComplete = lastEtapa?.status === "concluido"
+  const lastEtapaFailed = lastEtapa?.status === "erro"
+  const headerTone = allStepsComplete
+    ? "border-success-100 bg-gradient-to-br from-success-50 to-white"
+    : lastEtapaFailed
+      ? "border-danger-100 bg-gradient-to-br from-danger-50 to-white"
+      : "border-warning-100 bg-gradient-to-br from-warning-50 to-white"
+  const headerIconTone = allStepsComplete
+    ? "bg-success-100 text-success-600"
+    : lastEtapaFailed
+      ? "bg-danger-100 text-danger-600"
+      : "bg-warning-100 text-warning-600"
+  const HeaderIcon = allStepsComplete
+    ? CheckCircle2
+    : lastEtapaFailed
+      ? AlertTriangle
+      : Clock
+  const headerStatusLabel = allStepsComplete
+    ? "Finalizado"
+    : lastEtapaFailed
+      ? "Erro na integração XML"
+      : "Aguardando integração XML"
+
   return (
     <div className="flex flex-col lg:flex-row gap-6 items-start">
       <FinalizadoProcessNavigator
@@ -228,16 +252,16 @@ export default function ProcessoFinalizado() {
         <motion.div
           initial={{ opacity: 0, scale: 0.98 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="rounded-xl border border-success-100 bg-gradient-to-br from-success-50 to-white p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+          className={cn("rounded-xl border p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3", headerTone)}
         >
           <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-success-100 text-success-600 shrink-0">
-              <CheckCircle2 className="h-6 w-6" />
+            <div className={cn("flex h-11 w-11 items-center justify-center rounded-full shrink-0", headerIconTone)}>
+              <HeaderIcon className="h-6 w-6" />
             </div>
             <div className="min-w-0">
               <h2 className="text-lg font-bold text-primary-900 truncate">{documentNumber}</h2>
               <p className="text-xs text-muted-foreground">
-                {tipo} · {blFinal?.blVersion ?? timeline.blVersion ?? workflow?.blVersion ?? "FINAL"} · Finalizado
+                {tipo} · {blFinal?.blVersion ?? timeline.blVersion ?? workflow?.blVersion ?? "FINAL"} · {headerStatusLabel}
               </p>
             </div>
           </div>

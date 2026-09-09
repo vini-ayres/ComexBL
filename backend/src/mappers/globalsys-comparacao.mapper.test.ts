@@ -18,7 +18,11 @@ describe('mapGlobalSysMasterRecord (query de divergência)', () => {
         Voyage: '0039W',
         CarrierSCACCode: null,
         CarrierName: 'PACIFIC INTERNATIONAL LINES',
+        ShipperName: 'AGENTE INTERNACIONAL LTDA',
+        ServiceTerm: 'HH – House to House',
         FreightTerm: 'C',
+        LoadingPortName: 'SHANGHAI',
+        DischargePortName: 'SANTOS',
         ContainerNumber: 'PCIU9479276',
         ContainerSealNo1: 'CR0167159',
         ContainerType: '40 HC',
@@ -31,7 +35,11 @@ describe('mapGlobalSysMasterRecord (query de divergência)', () => {
     assert.equal(mapped.voyage, '0039W');
     assert.equal(mapped.carrierName, 'PACIFIC INTERNATIONAL LINES');
     assert.equal(mapped.carrierScacCode, null);
+    assert.equal(mapped.shipperName, 'AGENTE INTERNACIONAL LTDA');
+    assert.equal(mapped.serviceTerm, 'HH – House to House');
     assert.equal(mapped.freightTerm, 'C');
+    assert.equal(mapped.loadingPortName, 'SHANGHAI');
+    assert.equal(mapped.dischargePortName, 'SANTOS');
     assert.equal(mapped.containerNumber, 'PCIU9479276');
     assert.equal(mapped.containerSealNo1, 'CR0167159');
     assert.equal(mapped.containerType, '40 HC');
@@ -44,7 +52,12 @@ describe('mapGlobalSysMasterRecord (query de divergência)', () => {
         NM_NAVIO: 'KOTA PUSAKA',
         NR_VIAGEM: '0039W',
         NM_TRANSPORTADOR: 'PACIFIC INTERNATIONAL LINES',
+        NM_AGENTE_INTERNACIONAL: 'AGENTE INTERNACIONAL LTDA',
+        NM_SHIPPER: 'SHIPPER VIA ID_PARCEIRO_SHIPPER',
+        NM_TIPO_MODALIDADE: 'PP – Pier to Pier',
         NM_TIPO_PAGAMENTO: 'COLLECT',
+        NM_PORTO_ORIGEM: 'SHANGHAI',
+        NM_PORTO_DESTINO: 'SANTOS',
         NR_CNTR: 'PCIU9479276',
         NR_LACRE: 'CR0167159',
         NM_TIPO_CONTAINER: '40 HC',
@@ -54,7 +67,11 @@ describe('mapGlobalSysMasterRecord (query de divergência)', () => {
     );
 
     assert.equal(mapped.vesselName, 'KOTA PUSAKA');
+    assert.equal(mapped.shipperName, 'AGENTE INTERNACIONAL LTDA');
+    assert.equal(mapped.serviceTerm, 'PP – Pier to Pier');
     assert.equal(mapped.freightTerm, 'COLLECT');
+    assert.equal(mapped.loadingPortName, 'SHANGHAI');
+    assert.equal(mapped.dischargePortName, 'SANTOS');
     assert.equal(mapped.carrierScacCode, 'PABV');
     assert.equal(mapped.containerNumber, 'PCIU9479276');
   });
@@ -68,7 +85,9 @@ describe('mapGlobalSysHouseRecord (query de divergência)', () => {
         ShipperName: 'SHIPPER LTDA',
         ConsigneeName: 'CONSIGNEE SA',
         NotifyName: 'NOTIFY SA',
-        DeliveryPortName: 'SANTOS',
+        ServiceTerm: 'HP – House to Pier',
+        LoadingPortName: 'SHANGHAI',
+        DischargePortName: 'SANTOS',
         PackingQuantity: 4,
         GrossWeight: 800,
         VolumeMeasure: 12,
@@ -82,7 +101,9 @@ describe('mapGlobalSysHouseRecord (query de divergência)', () => {
     assert.equal(mapped.shipperName, 'SHIPPER LTDA');
     assert.equal(mapped.consigneeName, 'CONSIGNEE SA');
     assert.equal(mapped.notifyName, 'NOTIFY SA');
-    assert.equal(mapped.deliveryPortName, 'SANTOS');
+    assert.equal(mapped.serviceTerm, 'HP – House to Pier');
+    assert.equal(mapped.loadingPortName, 'SHANGHAI');
+    assert.equal(mapped.dischargePortName, 'SANTOS');
     assert.equal(mapped.packingQuantity, '4');
     assert.equal(mapped.grossWeight, '800');
     assert.equal(mapped.volumeMeasure, '12');

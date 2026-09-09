@@ -131,6 +131,44 @@ export default function Divergencia() {
     })}`)
   }, [navigate])
 
+  const queueIndex = useMemo(
+    () => queue.findIndex((item) => item.numeroBl === documentNumber),
+    [documentNumber, queue],
+  )
+
+  const advanceToNextPendingBl = useCallback(async () => {
+    const localNext =
+      queueIndex >= 0 && queueIndex < queue.length - 1
+        ? queue[queueIndex + 1]
+        : undefined
+
+    if (localNext && localNext.numeroBl !== documentNumber) {
+      goToQueueItem(localNext)
+      return
+    }
+
+    try {
+      const result = await fetchDashboard({
+        status: "divergencia",
+        page: 1,
+        pageSize: 100,
+      })
+      const next = result.items.data.find((item) => item.numeroBl !== documentNumber)
+      setQueue(
+        result.items.data.filter((item) => item.numeroBl !== documentNumber),
+      )
+
+      if (next) {
+        goToQueueItem(next)
+        return
+      }
+    } catch {
+      setQueue((current) => current.filter((item) => item.numeroBl !== documentNumber))
+    }
+
+    navigate("/divergencia", { replace: true })
+  }, [documentNumber, goToQueueItem, navigate, queue, queueIndex])
+
   const loadDivergencia = useCallback(async () => {
     if (!isValid) {
       setLoading(false)
@@ -176,10 +214,6 @@ export default function Divergencia() {
     void loadQueue()
   }, [loadDivergencia, loadQueue])
 
-  const queueIndex = useMemo(
-    () => queue.findIndex((item) => item.numeroBl === documentNumber),
-    [documentNumber, queue],
-  )
   const queuePage = queueIndex >= 0 ? queueIndex + 1 : 1
   const queueTotal = queue.length
   const showQueueNav = queueTotal > 1
@@ -211,27 +245,21 @@ export default function Divergencia() {
       })
       await applyResolveResponse(result)
 
-      const allResolvedNow = result.summary.allResolved
-      const remaining = queue.filter((item) => item.numeroBl !== documentNumber)
-      const next = remaining[Math.max(queueIndex, 0)] ?? remaining[0]
+      if (result.summary.allResolved) {
+        toast.success(
+          strategy === "aceitar_bl_final"
+            ? "BL aceito. Carregando próximo BL da fila..."
+            : "GlobalSys mantido. Carregando próximo BL da fila...",
+        )
+        await advanceToNextPendingBl()
+        return
+      }
 
       toast.success(
-        allResolvedNow && next
-          ? strategy === "aceitar_bl_final"
-            ? "BL aceito. Carregando próximo BL da fila..."
-            : "GlobalSys mantido. Carregando próximo BL da fila..."
-          : strategy === "aceitar_bl_final"
-            ? "BL aceito. Um novo XML será gerado e enviado ao EDI."
-            : "Valores do GlobalSys mantidos. Processo finalizado, sem envio de XML.",
+        strategy === "aceitar_bl_final"
+          ? "BL aceito. Um novo XML será gerado e enviado ao EDI."
+          : "Valores do GlobalSys mantidos. Processo finalizado, sem envio de XML.",
       )
-
-      if (allResolvedNow) {
-        if (next) {
-          goToQueueItem(next)
-          return
-        }
-        await loadQueue()
-      }
     } catch (err) {
       const message = err instanceof ApiError ? err.message : "Erro ao resolver divergência."
       toast.error(message)
@@ -250,6 +278,13 @@ export default function Divergencia() {
         responsavelNome: user?.nome,
       })
       await applyResolveResponse(result)
+
+      if (result.summary.allResolved) {
+        toast.success("Divergências resolvidas. Carregando próximo BL da fila...")
+        await advanceToNextPendingBl()
+        return
+      }
+
       toast.success("Campo resolvido.")
     } catch (err) {
       const message = err instanceof ApiError ? err.message : "Erro ao resolver campo."

@@ -87,7 +87,11 @@ export function BlFinalView({
               <FieldRow label="Voyage" value={master.voyage} />
               <FieldRow label="Carrier SCAC" value={master.carrierScacCode} />
               <FieldRow label="Carrier Name" value={master.carrierName} />
+              <FieldRow label="Shipper Name" value={master.shipperName} />
+              <FieldRow label="Service Term" value={master.serviceTerm} />
               <FieldRow label="Freight Term" value={master.freightTerm} />
+              <FieldRow label="Loading Port Name" value={master.loadingPortName} />
+              <FieldRow label="Discharge Port Name" value={master.dischargePortName} />
               <FieldRow label="Container Number" value={master.containerNumber} />
               <FieldRow label="Container Seal No 1" value={master.containerSealNo1} />
               <FieldRow label="Container Type" value={master.containerType} />
@@ -115,10 +119,10 @@ export function BlFinalView({
                   <FieldRow label="Shipper Name" value={house.shipperName} />
                   <FieldRow label="Consignee Name" value={house.consigneeName} />
                   <FieldRow label="Notify Name" value={house.notifyName} />
+                  <FieldRow label="Service Term" value={house.serviceTerm} />
                   <FieldRow label="Freight Term" value={house.freightTerm} />
                   <FieldRow label="Loading Port Name" value={house.loadingPortName} />
                   <FieldRow label="Discharge Port Name" value={house.dischargePortName} />
-                  <FieldRow label="Delivery Port Name" value={house.deliveryPortName} />
                   <FieldRow label="Container Number" value={house.container.containerNumber} />
                   <FieldRow label="Packing Quantity" value={house.packingQuantity} />
                   <FieldRow label="Gross Weight" value={house.grossWeight} />

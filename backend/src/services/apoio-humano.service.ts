@@ -19,6 +19,7 @@ import type {
 } from '../types/apoio-humano.types.js';
 import type { UpdateWorkflowInput } from '../types/bl-domain.types.js';
 import type { PaginationQuery } from '../types/bl.types.js';
+import { validateApoioHumanoSave } from '../utils/apoio-humano-save-rules.js';
 import { getSkipTake } from '../utils/pagination.js';
 import type { ConferenciaHouseMasterService } from './conferencia-house-master.service.js';
 import type { GlobalSysConsultaService } from './globalsys-consulta.service.js';
@@ -120,6 +121,15 @@ export class ApoioHumanoService {
 
       if (!blExists) {
         throw new NotFoundError(`BL ${tipo} ${blId} não encontrado`);
+      }
+
+      const saveBlockReason = validateApoioHumanoSave(
+        payload.campos,
+        blExists.ContainerNumber,
+      );
+
+      if (saveBlockReason) {
+        throw new BadRequestError(saveBlockReason);
       }
 
       const localizadoNoGlobalSys =

@@ -56,9 +56,9 @@ export function ProcessoEtapasCompact({ etapas }: ProcessoEtapasCompactProps) {
               statusTone(etapa.status),
             )}
             title={
-              etapa.completedAt
-                ? `${etapa.titulo} — ${formatDateTime(etapa.completedAt)}`
-                : etapa.titulo
+              [etapa.titulo, etapa.descricao, etapa.completedAt ? formatDateTime(etapa.completedAt) : null]
+                .filter(Boolean)
+                .join(' — ')
             }
           >
             <Icon className="h-3 w-3 shrink-0" />

@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import {
   History, Ship, Package, ChevronRight, Box, Loader2, AlertCircle,
-  Link2, Unlink, Send, BadgeCheck,
+  Link2, Unlink, Send, BadgeCheck, RefreshCcw,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -31,18 +31,22 @@ const LOT_LABELS: Record<LotStatus, { label: string; variant: "danger" | "warnin
   aguardando_house: { label: "Aguarda House", variant: "warning" },
   house_nao_finalizado: { label: "House pendente", variant: "warning" },
   pronto: { label: "Pronto XML", variant: "success" },
-  xml_enviado: { label: "XML enviado", variant: "success" },
+  xml_enviado: { label: "XML enviado", variant: "info" },
   xml_falhou: { label: "Falha XML", variant: "danger" },
+  xml_sucesso: { label: "Integrado", variant: "success" },
+  xml_erro: { label: "Erro de integração", variant: "danger" },
 }
 
 const XML_LABELS: Record<XmlDispatchUiStatus, { label: string; variant: "danger" | "warning" | "info" | "success" | "neutral" }> = {
   nao_enviado: { label: "Não enviado", variant: "neutral" },
   pendente: { label: "Enviando", variant: "info" },
-  enviado: { label: "XML enviado", variant: "success" },
+  enviado: { label: "XML enviado", variant: "info" },
   falhou: { label: "Falha XML", variant: "danger" },
+  sucesso: { label: "Integrado", variant: "success" },
+  erro: { label: "Erro de integração", variant: "danger" },
 }
 
-type LotFilter = "todos" | "partlot" | "aguardando_xml" | "enviados"
+type LotFilter = "todos" | "partlot" | "aguardando_xml" | "enviados" | "integrado" | "erro"
 
 export default function BLDatabase() {
   const navigate = useNavigate()
@@ -60,45 +64,43 @@ export default function BLDatabase() {
   const [blVersion, setBlVersion] = useState<string>("todos")
   const [lotFilter, setLotFilter] = useState<LotFilter>("todos")
 
-  useEffect(() => {
-    let cancelled = false
+  const loadMasters = useCallback(async () => {
+    setLoadingList(true)
+    setError(null)
 
-    async function loadMasters() {
-      setLoadingList(true)
-      setError(null)
+    try {
+      const result = await fetchBlMasters(1, 200, {
+        search: search.trim() || undefined,
+        blVersion: blVersion === "todos" ? undefined : blVersion,
+      })
 
-      try {
-        const result = await fetchBlMasters(1, 200, {
-          search: search.trim() || undefined,
-          blVersion: blVersion === "todos" ? undefined : blVersion,
-        })
-        if (cancelled) return
+      setMasters(result.data)
 
-        setMasters(result.data)
-
-        if (result.data.length > 0) {
-          setSelectedMasterId((current) =>
-            current != null && result.data.some((item) => item.id === current)
-              ? current
-              : result.data[0].id,
-          )
-        } else {
-          setSelectedMasterId(null)
-        }
-      } catch (err) {
-        if (cancelled) return
-        const message = err instanceof ApiError
-          ? err.message
-          : "Não foi possível carregar o histórico de XML. Verifique se a API está rodando."
-        setError(message)
-      } finally {
-        if (!cancelled) setLoadingList(false)
+      if (result.data.length > 0) {
+        setSelectedMasterId((current) =>
+          current != null && result.data.some((item) => item.id === current)
+            ? current
+            : result.data[0].id,
+        )
+      } else {
+        setSelectedMasterId(null)
       }
-    }
 
-    void loadMasters()
-    return () => { cancelled = true }
+      return true
+    } catch (err) {
+      const message = err instanceof ApiError
+        ? err.message
+        : "Não foi possível carregar o histórico de XML. Verifique se a API está rodando."
+      setError(message)
+      return false
+    } finally {
+      setLoadingList(false)
+    }
   }, [search, blVersion])
+
+  useEffect(() => {
+    void loadMasters()
+  }, [loadMasters])
 
   useEffect(() => {
     if (selectedMasterId == null) {
@@ -136,7 +138,15 @@ export default function BLDatabase() {
       if (lotFilter === "aguardando_xml") {
         return master.lotStatus === "pronto" || master.lotStatus === "xml_falhou"
       }
-      if (lotFilter === "enviados") return master.lotStatus === "xml_enviado"
+      if (lotFilter === "enviados") {
+        return master.lotStatus === "xml_enviado"
+      }
+      if (lotFilter === "integrado") {
+        return master.lotStatus === "xml_sucesso"
+      }
+      if (lotFilter === "erro") {
+        return master.lotStatus === "xml_erro"
+      }
       return true
     })
   }, [masters, lotFilter])
@@ -153,9 +163,25 @@ export default function BLDatabase() {
     if (selectedMasterId == null) return
     const detail = await fetchBlMasterById(selectedMasterId)
     setSelectedMaster(detail)
-    setMasters((current) =>
-      current.map((item) => (item.id === detail.id ? { ...item, ...detail } : item)),
-    )
+    setMasters((current) => {
+      const next = current.map((item) => (item.id === detail.id ? { ...item, ...detail } : item))
+      const updated = next.find((item) => item.id === detail.id)
+      if (!updated) return next
+      return [updated, ...next.filter((item) => item.id !== detail.id)]
+    })
+  }
+
+  async function handleRefresh() {
+    const ok = await loadMasters()
+    if (!ok) return
+
+    try {
+      await refreshSelected()
+    } catch {
+      // a lista já foi recarregada; o detalhe segue o efeito de seleção
+    }
+
+    toast.success("Histórico atualizado.")
   }
 
   async function handleDispatch(force: boolean, houseId?: number) {
@@ -261,12 +287,29 @@ export default function BLDatabase() {
       <div className="grid grid-cols-1 lg:grid-cols-[360px_minmax(0,1fr)] gap-6 min-w-0">
         <Card className="h-fit lg:h-[calc(100vh-10rem)] lg:max-h-[calc(100vh-10rem)] overflow-hidden flex flex-col">
           <CardHeader className="shrink-0">
-            <CardTitle className="text-sm flex items-center gap-2">
-              <History className="h-4 w-4" /> Envios
-            </CardTitle>
-            <CardDescription>
-              {loadingList ? "Carregando..." : `${visibleMasters.length} registros`}
-            </CardDescription>
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <History className="h-4 w-4" /> Envios
+                </CardTitle>
+                <CardDescription>
+                  {loadingList ? "Carregando..." : `${visibleMasters.length} registros`}
+                </CardDescription>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => void handleRefresh()}
+                disabled={loadingList}
+              >
+                {loadingList ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <RefreshCcw className="h-3.5 w-3.5" />
+                )}
+                Atualizar
+              </Button>
+            </div>
           </CardHeader>
           <CardContent className="p-3 pt-0 flex-1 min-h-0 flex flex-col gap-3">
             <div className="shrink-0 space-y-3">
@@ -291,6 +334,8 @@ export default function BLDatabase() {
                     <SelectItem value="partlot">Partlot</SelectItem>
                     <SelectItem value="aguardando_xml">Aguardando XML</SelectItem>
                     <SelectItem value="enviados">XML enviado</SelectItem>
+                    <SelectItem value="integrado">Integrado</SelectItem>
+                    <SelectItem value="erro">Erro</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -380,7 +425,7 @@ export default function BLDatabase() {
                     <div className="flex flex-wrap gap-2">
                       <Button
                         size="sm"
-                        disabled={saving || selectedMaster.lotStatus === "xml_enviado"}
+                        disabled={saving || selectedMaster.lotStatus === "xml_enviado" || selectedMaster.lotStatus === "xml_sucesso"}
                         onClick={() => void handleDispatch(false)}
                       >
                         <Send className="h-3.5 w-3.5" />
@@ -447,7 +492,7 @@ export default function BLDatabase() {
                         {h.xmlDispatchError && (
                           <p className="text-xs text-danger-700 break-words">{h.xmlDispatchError}</p>
                         )}
-                        {canEdit && h.status === "finalizado" && h.xmlDispatchStatus !== "enviado" && (
+                        {canEdit && h.status === "finalizado" && !isXmlAlreadyDispatched(h.xmlDispatchStatus) && (
                           <Button
                             size="sm"
                             variant="secondary"
@@ -458,7 +503,7 @@ export default function BLDatabase() {
                             Enviar XML deste House
                           </Button>
                         )}
-                        {canEdit && h.xmlDispatchStatus === "enviado" && (
+                        {canEdit && isXmlAlreadyDispatched(h.xmlDispatchStatus) && (
                           <Button
                             size="sm"
                             variant="outline"
@@ -509,8 +554,12 @@ export default function BLDatabase() {
   )
 }
 
+function isXmlAlreadyDispatched(status: XmlDispatchUiStatus | undefined): boolean {
+  return status === "enviado" || status === "sucesso"
+}
+
 function LotBadge({ status }: { status: LotStatus }) {
-  const config = LOT_LABELS[status]
+  const config = LOT_LABELS[status] ?? LOT_LABELS.pronto
   return (
     <Badge variant={config.variant} className="text-[10px] px-1.5 py-0 shrink-0 whitespace-nowrap">
       {config.label}
@@ -519,7 +568,7 @@ function LotBadge({ status }: { status: LotStatus }) {
 }
 
 function XmlBadge({ status }: { status: XmlDispatchUiStatus }) {
-  const config = XML_LABELS[status]
+  const config = XML_LABELS[status] ?? XML_LABELS.nao_enviado
   return (
     <Badge variant={config.variant} className="text-[10px] px-1.5 py-0 shrink-0 whitespace-nowrap">
       {config.label}

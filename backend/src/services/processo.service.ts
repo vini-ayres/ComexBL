@@ -1,4 +1,4 @@
-import type { BlHouse, BlMaster, BlWorkflow } from '@prisma/client';
+import type { BlHouse, BlMaster, BlWorkflow, BlXmlDispatch } from '@prisma/client';
 import { BL_VERSION, type BlVersion } from '../constants/bl-version.constants.js';
 import { NotFoundError } from '../errors/AppError.js';
 import {
@@ -11,13 +11,19 @@ import {
   mapHistoricoToTimelineEvent,
   mapProcessoTimelineResponse,
   mapRevisaoEvent,
+  mapXmlDispatchEvent,
 } from '../mappers/processo.mapper.js';
+import {
+  aggregateXmlDispatchStatus,
+  asXmlDispatchUiStatus,
+} from '../mappers/bl-lot.mapper.js';
 import { apoioHumanoRepository } from '../repositories/apoio-humano.repository.js';
 import { blConsultaGlobalSysRepository } from '../repositories/bl-consulta-globalsys.repository.js';
 import { blConferenciaRepository } from '../repositories/bl-conferencia.repository.js';
 import { blDivergenciaRepository } from '../repositories/bl-divergencia.repository.js';
 import { blHistoricoAlteracaoRepository } from '../repositories/bl-historico-alteracao.repository.js';
 import { blProcessoEtapaRepository } from '../repositories/bl-processo-etapa.repository.js';
+import { blXmlDispatchRepository } from '../repositories/bl-xml-dispatch.repository.js';
 import { blHouseRepository, blMasterRepository, blWorkflowRepository } from '../repositories/bl.repository.js';
 import type { BlDocumentType } from '../types/bl-domain.types.js';
 import type { ProcessoTimelineEventDto, ProcessoTimelineResponseDto } from '../types/processo.types.js';
@@ -62,6 +68,7 @@ export class ProcessoService {
       revisoes,
       draftRecord,
       finalRecord,
+      xmlRecords,
     ] = await Promise.all([
       documentType === 'Master'
         ? blProcessoEtapaRepository.findByMasterId(documentContext.recordId)
@@ -86,6 +93,9 @@ export class ProcessoService {
         : apoioHumanoRepository.findRevisoesByHouseIds([documentContext.recordId]),
       this.findVersionRecord(documentType, documentNumber, BL_VERSION.DRAFT),
       this.findVersionRecord(documentType, documentNumber, BL_VERSION.FINAL),
+      documentType === 'Master'
+        ? blXmlDispatchRepository.findByMasterId(documentContext.recordId)
+        : this.findXmlDispatchForHouse(documentContext.recordId),
     ]);
 
     const ocrOccurredAt = await this.resolveOcrIngestedAt({
@@ -162,6 +172,16 @@ export class ProcessoService {
 
       dynamicEvents.push(mapHistoricoToTimelineEvent(item));
     }
+
+    dynamicEvents.push(
+      mapXmlDispatchEvent({
+        documentType,
+        documentNumber,
+        status: await this.resolveXmlUiStatus(documentType, documentContext.recordId, xmlRecords),
+        occurredAt: this.resolveXmlOccurredAt(xmlRecords, workflow),
+        error: xmlRecords.find((item) => item.LastError)?.LastError ?? null,
+      }),
+    );
 
     return mapProcessoTimelineResponse({
       documentType,
@@ -279,6 +299,44 @@ export class ProcessoService {
     const candidate = finalWorkflow?.CreatedAt ?? params.ocrOccurredAt;
 
     return candidate < params.ocrOccurredAt ? params.ocrOccurredAt : candidate;
+  }
+
+  private async findXmlDispatchForHouse(houseId: number): Promise<BlXmlDispatch[]> {
+    const record = await blXmlDispatchRepository.findByHouseId(houseId);
+    return record ? [record] : [];
+  }
+
+  private async resolveXmlUiStatus(
+    documentType: BlDocumentType,
+    recordId: number,
+    xmlRecords: BlXmlDispatch[],
+  ) {
+    if (documentType === 'Master') {
+      const houses = await blHouseRepository.findByMasterId(recordId);
+      return aggregateXmlDispatchStatus(xmlRecords, houses.length);
+    }
+
+    return asXmlDispatchUiStatus(xmlRecords[0]?.Status);
+  }
+
+  private resolveXmlOccurredAt(
+    xmlRecords: BlXmlDispatch[],
+    workflow: BlWorkflow | null,
+  ): Date {
+    const latest = xmlRecords.reduce<Date | null>((current, record) => {
+      const candidate = record.UpdatedAt ?? record.DispatchedAt;
+      if (!candidate) {
+        return current;
+      }
+
+      if (!current || candidate > current) {
+        return candidate;
+      }
+
+      return current;
+    }, null);
+
+    return latest ?? workflow?.UpdatedAt ?? new Date();
   }
 
   private async findWorkflowByRecord(

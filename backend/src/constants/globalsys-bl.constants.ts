@@ -41,6 +41,7 @@ export const GLOBALSYS_TB_BL_COLUMNS = [
     column: 'NM_PORTO_ORIGEM',
     apiKey: 'loadingPortName',
     homologationStatus: 'confirmed',
+    homologationNotes: 'TB_PORTO.NM_PORTO via ID_PORTO_ORIGEM.',
   },
   {
     column: 'CD_PORTO_DESTINO',
@@ -52,6 +53,7 @@ export const GLOBALSYS_TB_BL_COLUMNS = [
     column: 'NM_PORTO_DESTINO',
     apiKey: 'dischargePortName',
     homologationStatus: 'confirmed',
+    homologationNotes: 'TB_PORTO.NM_PORTO via ID_PORTO_DESTINO.',
   },
   {
     column: 'NM_CONSIGNEE',
@@ -63,7 +65,7 @@ export const GLOBALSYS_TB_BL_COLUMNS = [
     column: 'NM_SHIPPER',
     apiKey: 'shipperName',
     homologationStatus: 'confirmed',
-    homologationNotes: 'TB_PARCEIRO.NM_RAZAO via ID_PARCEIRO_SHIPPER.',
+    homologationNotes: 'TB_PARCEIRO.NM_RAZAO via ID_PARCEIRO_SHIPPER (House).',
   },
   {
     column: 'VL_PESO_BRUTO',

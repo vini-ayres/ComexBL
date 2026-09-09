@@ -40,7 +40,7 @@ export class IntegrationConfigRepository {
         ConfigJson: params.configJson,
         Status: params.status,
         LastSyncAt: params.lastSyncAt === undefined ? undefined : params.lastSyncAt,
-        UpdatedByUserId: params.updatedByUserId ?? undefined,
+        UpdatedByUserId: params.updatedByUserId === undefined ? undefined : params.updatedByUserId,
       },
     });
   }

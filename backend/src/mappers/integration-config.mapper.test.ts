@@ -8,6 +8,7 @@ import {
   splitBindIdentity,
   mergeLdapRuntime,
   mergeGlobalSysRuntime,
+  sqlServerRuntimeToDatabaseUrl,
 } from './integration-config.mapper.js';
 import type { LdapRuntimeConfig, GlobalSysRuntimeConfig } from '../types/integration.types.js';
 
@@ -121,4 +122,25 @@ test('mergeGlobalSysRuntime ignora placeholder do seed', () => {
   });
 
   assert.equal(merged.source, 'env');
+});
+
+test('sqlServerRuntimeToDatabaseUrl replica NTLM e instância nomeada do GlobalSys', () => {
+  const url = sqlServerRuntimeToDatabaseUrl({
+    enabled: true,
+    server: '10.100.17.10\\FCA',
+    port: 1433,
+    name: 'DB_OCR_FCA',
+    domain: 'abainfra.local',
+    authMode: 'ntlm',
+    user: 'vinicius.ayres',
+    password: 'secret',
+    encrypt: false,
+    trustServerCertificate: true,
+    connectionTimeoutMs: 30000,
+    requestTimeoutMs: 30000,
+  });
+
+  assert.ok(url.startsWith('sqlserver://10.100.17.10\\FCA;'));
+  assert.equal(url.includes(':1433'), false);
+  assert.ok(url.includes('integratedSecurity=true'));
 });

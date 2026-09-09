@@ -55,6 +55,7 @@ export function flattenBlFinalHouse(house: BlFinalHouseDto): Record<string, stri
     shipperName: house.shipperName,
     consigneeName: house.consigneeName,
     notifyName: house.notifyName,
+    serviceTerm: house.serviceTerm,
     loadingPortCode: house.loadingPortCode,
     loadingPortName: house.loadingPortName,
     dischargePortCode: house.dischargePortCode,

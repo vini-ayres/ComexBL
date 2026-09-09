@@ -74,10 +74,14 @@ export class BlLotService {
     pagination: PaginationQuery,
     filters: { search?: string; blVersion?: BlVersion } = {},
   ): Promise<PaginatedResult<BlLotSummaryDto>> {
-    const { items, total } = await this.masterRepository.findMany(pagination, {
-      search: filters.search,
-      blVersion: filters.blVersion,
-    });
+    const { items, total } = await this.masterRepository.findMany(
+      pagination,
+      {
+        search: filters.search,
+        blVersion: filters.blVersion,
+      },
+      { orderByLatestXmlUpdate: true },
+    );
 
     const summaries = await this.enrichMasters(items);
     return buildPaginatedResult(summaries, total, pagination);
@@ -102,12 +106,21 @@ export class BlLotService {
     const xmlDispatches = await this.xmlDispatchRepository.findByMasterId(id);
     const xmlByHouseId = indexXmlDispatchesByHouseId(xmlDispatches);
 
-    const houses = linked.map((house) =>
-      mapLotHouse(house, workflowByHouseId.get(house.Id), {
-        candidate: false,
-        xmlDispatch: xmlByHouseId.get(house.Id),
-      }),
-    );
+    const houses = [...linked]
+      .sort((a, b) => {
+        const timeA = xmlByHouseId.get(a.Id)?.UpdatedAt?.getTime() ?? 0;
+        const timeB = xmlByHouseId.get(b.Id)?.UpdatedAt?.getTime() ?? 0;
+        if (timeB !== timeA) {
+          return timeB - timeA;
+        }
+        return a.HouseNumber.localeCompare(b.HouseNumber);
+      })
+      .map((house) =>
+        mapLotHouse(house, workflowByHouseId.get(house.Id), {
+          candidate: false,
+          xmlDispatch: xmlByHouseId.get(house.Id),
+        }),
+      );
 
     const candidateHouses = await this.findCandidateHouses(
       found.master,

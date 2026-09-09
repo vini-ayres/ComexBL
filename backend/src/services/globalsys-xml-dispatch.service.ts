@@ -3,8 +3,6 @@ import type { BlVersion } from '../constants/bl-version.constants.js';
 import { isBlVersion } from '../constants/bl-version.constants.js';
 import {
   MASTER_HBL_COUNT,
-  XML_DISPATCH_STATUS,
-  XML_DISPATCH_UI_STATUS,
   type XmlDispatchUiStatus,
 } from '../constants/xml-dispatch.constants.js';
 import { logger } from '../config/logger.js';
@@ -22,6 +20,10 @@ import { BlXmlDispatchRepository } from '../repositories/bl-xml-dispatch.reposit
 import type { BlDocumentType } from '../types/bl-domain.types.js';
 import type { XmlDispatchEvaluationDto } from '../types/bl-lot.types.js';
 import { RelationshipValidator } from '../validators/relationship-validator.js';
+import {
+  aggregateXmlUiStatuses,
+  asXmlDispatchUiStatus,
+} from '../mappers/bl-lot.mapper.js';
 
 function normalizeContainerNumber(value: string | null | undefined): string | null {
   if (value == null) {
@@ -305,7 +307,7 @@ export class GlobalSysXmlDispatchService {
         house,
         valid: validation.valid,
         houseFinalized: houseWorkflowById.get(house.Id)?.Status === 'finalizado',
-        xmlStatus: this.toUiXmlStatus(xmlByHouseId.get(house.Id)?.Status),
+        xmlStatus: asXmlDispatchUiStatus(xmlByHouseId.get(house.Id)?.Status),
       };
     });
 
@@ -349,19 +351,6 @@ export class GlobalSysXmlDispatchService {
     }
   }
 
-  private toUiXmlStatus(status: string | null | undefined): XmlDispatchUiStatus {
-    if (status === XML_DISPATCH_STATUS.ENVIADO) {
-      return XML_DISPATCH_UI_STATUS.ENVIADO;
-    }
-    if (status === XML_DISPATCH_STATUS.FALHOU) {
-      return XML_DISPATCH_UI_STATUS.FALHOU;
-    }
-    if (status === XML_DISPATCH_STATUS.PENDENTE) {
-      return XML_DISPATCH_UI_STATUS.PENDENTE;
-    }
-    return XML_DISPATCH_UI_STATUS.NAO_ENVIADO;
-  }
-
   private toLotStatusInput(snapshot: MasterLotSnapshot): LotStatusInput {
     return {
       masterFinalized: snapshot.masterFinalized,
@@ -394,18 +383,9 @@ export class GlobalSysXmlDispatchService {
   }
 
   private aggregateXmlStatus(snapshot: LotStatusInput): XmlDispatchUiStatus {
-    if (snapshot.houses.length === 0) {
-      return XML_DISPATCH_UI_STATUS.NAO_ENVIADO;
-    }
-    if (snapshot.houses.every((house) => house.xmlStatus === XML_DISPATCH_UI_STATUS.ENVIADO)) {
-      return XML_DISPATCH_UI_STATUS.ENVIADO;
-    }
-    if (snapshot.houses.some((house) => house.xmlStatus === XML_DISPATCH_UI_STATUS.FALHOU)) {
-      return XML_DISPATCH_UI_STATUS.FALHOU;
-    }
-    if (snapshot.houses.some((house) => house.xmlStatus === XML_DISPATCH_UI_STATUS.PENDENTE)) {
-      return XML_DISPATCH_UI_STATUS.PENDENTE;
-    }
-    return XML_DISPATCH_UI_STATUS.NAO_ENVIADO;
+    return aggregateXmlUiStatuses(
+      snapshot.houses.map((house) => house.xmlStatus),
+      snapshot.houses.length,
+    );
   }
 }

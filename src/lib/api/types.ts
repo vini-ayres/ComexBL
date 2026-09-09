@@ -22,12 +22,16 @@ export type LotStatus =
   | 'pronto'
   | 'xml_enviado'
   | 'xml_falhou'
+  | 'xml_sucesso'
+  | 'xml_erro'
 
 export type XmlDispatchUiStatus =
   | 'nao_enviado'
   | 'pendente'
   | 'enviado'
   | 'falhou'
+  | 'sucesso'
+  | 'erro'
 
 export interface BlMasterSummaryDto {
   id: number

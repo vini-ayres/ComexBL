@@ -70,21 +70,69 @@ export class BlMasterRepository {
   async findMany(
     pagination: PaginationQuery,
     filters: BlMasterListFilters = {},
+    options: { orderByLatestXmlUpdate?: boolean } = {},
   ): Promise<{ items: BlMaster[]; total: number }> {
     const { skip, take } = getSkipTake(pagination);
     const where = this.buildWhere(filters);
 
-    const [items, total] = await prisma.$transaction([
+    if (!options.orderByLatestXmlUpdate) {
+      const [items, total] = await prisma.$transaction([
+        prisma.blMaster.findMany({
+          where,
+          orderBy: { Id: 'desc' },
+          skip,
+          take,
+        }),
+        prisma.blMaster.count({ where }),
+      ]);
+
+      return { items, total };
+    }
+
+    const [idRows, total, xmlLatest] = await Promise.all([
       prisma.blMaster.findMany({
         where,
-        orderBy: { Id: 'desc' },
-        skip,
-        take,
+        select: { Id: true },
       }),
       prisma.blMaster.count({ where }),
+      prisma.blXmlDispatch.groupBy({
+        by: ['BlMasterId'],
+        _max: { UpdatedAt: true },
+      }),
     ]);
 
-    return { items, total };
+    const latestByMasterId = new Map(
+      xmlLatest.map((row) => [row.BlMasterId, row._max.UpdatedAt?.getTime() ?? 0]),
+    );
+
+    const pageIds = idRows
+      .map((row) => row.Id)
+      .sort((a, b) => {
+        const timeA = latestByMasterId.get(a) ?? 0;
+        const timeB = latestByMasterId.get(b) ?? 0;
+        if (timeB !== timeA) {
+          return timeB - timeA;
+        }
+        return b - a;
+      })
+      .slice(skip, skip + take);
+
+    if (pageIds.length === 0) {
+      return { items: [], total };
+    }
+
+    const items = await prisma.blMaster.findMany({
+      where: { Id: { in: pageIds } },
+    });
+    const itemById = new Map(items.map((item) => [item.Id, item]));
+
+    return {
+      items: pageIds.flatMap((id) => {
+        const item = itemById.get(id);
+        return item ? [item] : [];
+      }),
+      total,
+    };
   }
 
   async findById(id: number): Promise<{
